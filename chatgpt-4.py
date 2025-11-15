@@ -16,39 +16,87 @@ from sklearn.pipeline import Pipeline
 from sklearn.compose import ColumnTransformer
 from sklearn.linear_model import RidgeClassifier
 
-# ---------- FEATURE LOADER (EEG + Image + Text) ----------
-def feature_loader(sbj):
-    data_root = './data/ThingsEEG-Text'
-    roi = '17channels'
+
+def load_subjects(subjects, train=0, nc=100):
+    data_dir_root = os.path.join('./data', 'ThingsEEG-Text')
     image_model = 'pytorch/cornet_s'
     text_model = 'CLIPText'
+    roi = '17channels'
 
-    # ---- EEG ----
-    brain_dir = os.path.join(data_root, 'brain_feature', roi, sbj)
-    eeg_mat = sio.loadmat(os.path.join(brain_dir, 'eeg_train_data_within.mat'))
-    X_brain = eeg_mat['data'].astype('double') * 2.0
-    X_brain = X_brain[:, :, 27:60]   # 70–400 ms
-    X_brain = X_brain.reshape(X_brain.shape[0], -1)
-    labels = eeg_mat['class_idx'].T.astype('int').ravel()
+    all_brain, all_image, all_text, all_label = [], [], [], []
+    NUM_CLASSES = nc
+    SAMPLES_PER_CLASS = 10
 
-    # ---- Image ----
-    image_dir = os.path.join(data_root, 'visual_feature/ThingsTrain', image_model, sbj)
-    X_image = sio.loadmat(os.path.join(image_dir, 'feat_pca_train.mat'))['data'].astype('double') * 50.0
-    X_image = X_image[:, :100]
+    TRAIN_PER_CLASS = 5
+    VALIDATION_PER_CLASS = 3
 
-    # ---- Text ----
-    text_dir = os.path.join(data_root, 'textual_feature/ThingsTrain/text', text_model, sbj)
-    X_text = sio.loadmat(os.path.join(text_dir, 'text_feat_train.mat'))['data'].astype('double') * 2.0
+    for sbj in subjects:
+        print(f"Loading {sbj} ...")
 
-    # ---- Combine all modalities ----
-    X = np.hstack((X_brain, X_image, X_text))
+        brain_dir = os.path.join(data_dir_root, 'brain_feature', roi, sbj)
+        image_dir_seen = os.path.join(data_dir_root, 'visual_feature/ThingsTrain', image_model, sbj)
+        #image_dir_unseen = os.path.join(data_dir_root, 'visual_feature/ThingsTest', image_model, sbj)
+        text_dir_seen = os.path.join(data_dir_root, 'textual_feature/ThingsTrain/text', text_model, sbj)
+        #text_dir_unseen = os.path.join(data_dir_root, 'textual_feature/ThingsTest/text', text_model, sbj)
 
-    # ---- Limit to 50 categories (optional) ----
-    NUM_CLASSES = 50
-    valid_idx = np.where(labels < NUM_CLASSES+1)[0]
-    X = X[valid_idx]
-    y = labels[valid_idx]
-    return X, y
+        brain = sio.loadmat(os.path.join(brain_dir, 'eeg_train_data_within.mat'))['data'].astype('double') * 2.0
+        image = sio.loadmat(os.path.join(image_dir_seen, 'feat_pca_train.mat'))['data'].astype('double') * 50.0
+        text  = sio.loadmat(os.path.join(text_dir_seen, 'text_feat_train.mat'))['data'].astype('double') * 2.0
+        label = sio.loadmat(os.path.join(brain_dir, 'eeg_train_data_within.mat'))['class_idx'].T.astype('int')
+
+        # Preprocess
+        brain = brain[:, :, 27:60]  # 70–400 ms
+        brain = np.reshape(brain, (brain.shape[0], -1))
+        image = image[:, :100]
+
+        idx = np.squeeze(np.where(label < (NUM_CLASSES+1), True, False))
+        brain, image, text, label = brain[idx, :], image[idx, :], text[idx, :], label[idx]
+
+        if train==0:
+            #TRAINING
+            for i in range(NUM_CLASSES):
+                start = i * SAMPLES_PER_CLASS
+                end = start + SAMPLES_PER_CLASS
+                all_brain.append(brain[start:start+TRAIN_PER_CLASS])
+                #print("DORKUS:",brain[start:start+TRAIN_PER_CLASS].shape)
+                all_image.append(image[start:start+TRAIN_PER_CLASS])
+                all_text.append(text[start:start+TRAIN_PER_CLASS])
+                all_label.append(label[start:start+TRAIN_PER_CLASS])
+        elif train ==1:
+            #TESTING
+            for i in range(NUM_CLASSES):
+                start = i * SAMPLES_PER_CLASS
+                end = start + SAMPLES_PER_CLASS
+                all_brain.append(brain[start+TRAIN_PER_CLASS+VALIDATION_PER_CLASS:end])
+                all_image.append(image[start+TRAIN_PER_CLASS+VALIDATION_PER_CLASS:end])
+                all_text.append(text[start+TRAIN_PER_CLASS+VALIDATION_PER_CLASS:end])
+                all_label.append(label[start+TRAIN_PER_CLASS+VALIDATION_PER_CLASS:end])
+        else:
+            #VALIDATION
+            for i in range(NUM_CLASSES):
+                start = i * SAMPLES_PER_CLASS
+                end = start + SAMPLES_PER_CLASS
+                all_brain.append(brain[start+TRAIN_PER_CLASS:start+TRAIN_PER_CLASS+VALIDATION_PER_CLASS])
+                all_image.append(image[start+TRAIN_PER_CLASS:start+TRAIN_PER_CLASS+VALIDATION_PER_CLASS])
+                all_text.append(text[start+TRAIN_PER_CLASS:start+TRAIN_PER_CLASS+VALIDATION_PER_CLASS])
+                all_label.append(label[start+TRAIN_PER_CLASS:start+TRAIN_PER_CLASS+VALIDATION_PER_CLASS])
+    brain_all = np.vstack(all_brain)
+    image_all = np.vstack(all_image)
+    text_all = np.vstack(all_text)
+    label_all = np.vstack(all_label).ravel()
+
+    features = np.hstack((brain_all, image_all, text_all))
+    print("Final combined dataset:")
+    print(features.shape, label_all.shape)
+    #print("Agg.. features:")
+    #agged_features = agg_features(features) #issue: test data is used to agg the features
+    #print(agged_features.shape)
+    #print(features.shape, label_all.shape)
+
+    return features, label_all
+
+
+#
 
 def agg_features(train_features, test_features, a):
     agglo = cluster.FeatureAgglomeration(n_clusters=a)
@@ -61,32 +109,27 @@ def agg_features(train_features, test_features, a):
     else:
         return agged_train
     
-# ---------- SUBJECT-LEVEL TRAINING ----------
-def train_subject_classifier(X, y, alpha=1.0):
-    scaler = StandardScaler().fit(X)
-    Xs = scaler.transform(X)
-    Xs = agg_features(X, test_features=None, a=725)
 
-    clf = RidgeClassifier(alpha=alpha)
-    clf.fit(Xs, y)
-    return clf, scaler
-
-
-# ---------- META-TRAINING ----------
-def meta_train_classifiers(subjects, feature_loader, alpha=1.0):
+def train_model(subjects, alpha=1.0,nc=50, ac=725):
     weights = []
     for sbj in subjects:
-        X, y = feature_loader(sbj)
-        clf, _ = train_subject_classifier(X, y, alpha)
+        X, y = load_subjects([sbj], train=0, nc=nc)
+        scaler = StandardScaler().fit(X)
+        #scale
+        X = scaler.transform(X)
+        #agglomerate
+        X = agg_features(X, test_features=None, a=ac)
+
+        clf = RidgeClassifier(alpha=alpha)
+        clf.fit(X, y)
         weights.append(clf.coef_)
     weights = np.stack(weights)  # (num_subjects, n_classes, n_features)
     meta_mean = np.mean(weights, axis=0)
     return meta_mean
 
 
-# ---------- META-TEST / FINE-TUNE ----------
-def meta_finetune_classifier(meta_mean, test_sbj, feature_loader, few_shot=100, alpha=1.0):
-    X, y = feature_loader(test_sbj)
+def finetune_model(meta_mean, test_sbj, few_shot=100, alpha=1.0, nc=50, ac=725):
+    X, y = load_subjects([test_sbj], train=2, nc=nc)
     idx = np.random.choice(len(X), few_shot, replace=False)
     X_train, y_train = X[idx], y[idx]
     X_test, y_test = np.delete(X, idx, axis=0), np.delete(y, idx)
@@ -95,34 +138,36 @@ def meta_finetune_classifier(meta_mean, test_sbj, feature_loader, few_shot=100, 
     X_train = scaler.transform(X_train)
     X_test = scaler.transform(X_test)
 
-    X_train, X_test = agg_features(X_train, X_test, 725)
+    X_train, X_test = agg_features(X_train, X_test, a=ac)
 
     clf = RidgeClassifier(alpha=alpha)
     clf.fit(X_train, y_train)
-    clf.coef_ = meta_mean.copy()     # start from meta-prior weights
-    clf.fit(X_train, y_train)        # fine-tune
+    clf.coef_ = meta_mean.copy()     
+    clf.fit(X_train, y_train)        
 
     y_pred = clf.predict(X_test)
     acc = accuracy_score(y_test, y_pred)
     return acc
 
 
-# ---------- LOSO META-LEARNING ----------
-def loso_meta_learning(subjects, feature_loader, few_shot, alpha):
-    results = {}
-    for test_sbj in subjects:
-        train_subjects = [s for s in subjects if s != test_sbj]
-        print(f"\n=== Leave-One-Out: testing on {test_sbj} ===")
-        meta_mean = meta_train_classifiers(train_subjects, feature_loader, alpha)
-        acc = meta_finetune_classifier(meta_mean, test_sbj, feature_loader, few_shot, alpha)
-        results[test_sbj] = acc
-        print(f"Accuracy for {test_sbj}: {acc:.3f}")
-    print("\nAverage LOSO accuracy:", np.mean(list(results.values())))
-    return results
 
 
-# ---------- RUN ----------
 subjects = [f"sub-{i:02d}" for i in range(1, 11)]
-results = loso_meta_learning(subjects, feature_loader, few_shot=300, alpha=1.0)
-
-#TODO: use loader from dupe4.py to ensure proper separation of training and test data.
+results = {}
+TEST_INDEX = 0
+NUM_CLASSES = 50
+FEW_SHOT = 100
+ALPHA = 1.0
+AGGLOMERATION_COEFFICIENT=725
+test_subj = subjects[TEST_INDEX]
+subjects = subjects[0:TEST_INDEX] + subjects[TEST_INDEX+1:]
+for val_subj in subjects:
+    train_subjects = [s for s in subjects if s != val_subj]
+    print(f"\n=== Leave-One-Out: testing on {val_subj} ===")
+    #X_train, y_train = load_subjects(train_subjects, train=0, nc=50)  
+    #X_val,  y_val  = load_subjects([val_subj], train=2, nc=NUM_CLASSES)
+    meta_mean = train_model(train_subjects, alpha=ALPHA, nc=NUM_CLASSES, ac = AGGLOMERATION_COEFFICIENT)
+    acc = finetune_model(meta_mean, val_subj, few_shot=FEW_SHOT, alpha=ALPHA, nc=NUM_CLASSES, ac = AGGLOMERATION_COEFFICIENT)
+    results[val_subj] = acc
+    print(f"Accuracy for {val_subj}: {acc:.3f}")
+print("\nAverage LOSO accuracy:", np.mean(list(results.values())))
