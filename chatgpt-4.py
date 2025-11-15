@@ -31,7 +31,12 @@ def load_subjects(subjects, train=0, nc=100):
     VALIDATION_PER_CLASS = 3
 
     for sbj in subjects:
-        print(f"Loading {sbj} ...")
+        if train ==0:
+            print(f"TRAIN: Loading {sbj} ...")
+        elif train ==1:
+            print(f"TEST: Loading {sbj} ...")
+        else:
+            print(f"VALIDATION: Loading {sbj} ...")
 
         brain_dir = os.path.join(data_dir_root, 'brain_feature', roi, sbj)
         image_dir_seen = os.path.join(data_dir_root, 'visual_feature/ThingsTrain', image_model, sbj)
@@ -86,31 +91,14 @@ def load_subjects(subjects, train=0, nc=100):
     label_all = np.vstack(all_label).ravel()
 
     features = np.hstack((brain_all, image_all, text_all))
-    print("Final combined dataset:")
-    print(features.shape, label_all.shape)
-    #print("Agg.. features:")
-    #agged_features = agg_features(features) #issue: test data is used to agg the features
-    #print(agged_features.shape)
+    #print("Final combined dataset:")
     #print(features.shape, label_all.shape)
 
     return features, label_all
 
 
-#
 
-def agg_features(train_features, test_features, a):
-    agglo = cluster.FeatureAgglomeration(n_clusters=a)
-    agglo.fit(train_features)
-    agged_train = agglo.transform(train_features)
-    if test_features is not None:
-        agged_test = agglo.transform(test_features)
-        
-        return agged_train, agged_test
-    else:
-        return agged_train
-    
-
-def train_model(subjects, alpha=1.0,nc=50, ac=725):
+def train_model(subjects, nc=50, ac=725):
     weights = []
     for sbj in subjects:
         X, y = load_subjects([sbj], train=0, nc=nc)
@@ -118,7 +106,10 @@ def train_model(subjects, alpha=1.0,nc=50, ac=725):
         #scale
         X = scaler.transform(X)
         #agglomerate
-        X = agg_features(X, test_features=None, a=ac)
+        #X = agg_features(X, test_features=None, a=ac)
+        agglomeration = cluster.FeatureAgglomeration(n_clusters=ac)
+        agglomeration.fit(X)
+        X = agglomeration.transform(X)
 
         #clf = RidgeClassifier(alpha=alpha)
         clf = LogisticRegression(
@@ -130,25 +121,26 @@ def train_model(subjects, alpha=1.0,nc=50, ac=725):
         weights.append(clf.coef_)
     weights = np.stack(weights)  # (num_subjects, n_classes, n_features)
     meta_mean = np.mean(weights, axis=0)
-    return meta_mean
+    return meta_mean, scaler, agglomeration
 
 
 
-def finetune_model(meta_mean, test_sbj, few_shot=150, alpha=1.0, nc=50, ac=725):
+def finetune_model(meta_mean, val_subj, nc=50, scaler=None, agglomeration=None):
     # Load validation data for the held-out subject
-    X, y = load_subjects([test_sbj], train=2, nc=nc)
+    X, y = load_subjects([val_subj], train=2, nc=nc)
     #print(len(X))
+    """
     idx = np.random.choice(len(X), few_shot, replace=False)
     X_train, y_train = X[idx], y[idx]
     X_test,  y_test  = np.delete(X, idx, axis=0), np.delete(y, idx)
-
-    # Normalize using only training data
-    scaler = StandardScaler().fit(X_train)
-    X_train = scaler.transform(X_train)
-    X_test  = scaler.transform(X_test)
+    """
+    # Normalize 
+    
+    X = scaler.transform(X)
+    #X_test  = scaler.transform(X_test)
 
     # Feature agglomeration
-    X_train, X_test = agg_features(X_train, X_test, a=ac)
+    X = agglomeration.transform(X)
 
     # Use warm-start logistic regression for clean fine-tuning
     clf = LogisticRegression(
@@ -158,9 +150,9 @@ def finetune_model(meta_mean, test_sbj, few_shot=150, alpha=1.0, nc=50, ac=725):
         warm_start=True,
         max_iter=200
     )
-    classes = np.unique(y_train).tolist()
+    classes = np.unique(y).tolist()
     classes = [c-1 for c in classes]  
-    print(classes)
+    #print(classes)
 
     # Initialize weights from the meta-learned prior
     clf.classes_ = classes
@@ -168,13 +160,26 @@ def finetune_model(meta_mean, test_sbj, few_shot=150, alpha=1.0, nc=50, ac=725):
     clf.intercept_ = np.zeros(len(classes))
 
     # Fine-tune starting DIRECTLY from meta-weights
-    clf.fit(X_train, y_train)
+    clf.fit(X, y)
+
+    return clf
+    # Evaluate
+    #y_pred = clf.predict(X_test)
+    #return accuracy_score(y_test, y_pred)
+
+def test_model(model, test_subj, nc=50, scaler=None, agglomeration=None):
+    X_test,  y_test  = load_subjects([test_subj], train=1, nc=nc)
+    # Normalize 
+    X_test = scaler.transform(X_test)
+    X_test = agglomeration.transform(X_test)
+    #X_test = scaler.transform(X_test)
+
+    # Feature agglomeration
+    #X_test, _ = agg_features(X_test, None, a=ac)
 
     # Evaluate
-    y_pred = clf.predict(X_test)
+    y_pred = model.predict(X_test)
     return accuracy_score(y_test, y_pred)
-
-
 
 
 
@@ -182,18 +187,20 @@ subjects = [f"sub-{i:02d}" for i in range(1, 11)]
 results = {}
 TEST_INDEX = 0
 NUM_CLASSES = 50
-FEW_SHOT = 100
-ALPHA = 1.0
+#FEW_SHOT = 100
+#ALPHA = 1.0
 AGGLOMERATION_COEFFICIENT=725
 test_subj = subjects[TEST_INDEX]
 subjects = subjects[0:TEST_INDEX] + subjects[TEST_INDEX+1:]
 for val_subj in subjects:
     train_subjects = [s for s in subjects if s != val_subj]
-    print(f"\n=== Leave-One-Out: testing on {val_subj} ===")
-    #X_train, y_train = load_subjects(train_subjects, train=0, nc=50)  
-    #X_val,  y_val  = load_subjects([val_subj], train=2, nc=NUM_CLASSES)
-    meta_mean = train_model(train_subjects, alpha=ALPHA, nc=NUM_CLASSES, ac = AGGLOMERATION_COEFFICIENT)
-    acc = finetune_model(meta_mean, val_subj, few_shot=FEW_SHOT, alpha=ALPHA, nc=NUM_CLASSES, ac = AGGLOMERATION_COEFFICIENT)
+    print(f"\nUsing with {val_subj} as validation subject:")
+    #train
+    meta_mean, scaler, agglomeration = train_model(train_subjects, nc=NUM_CLASSES, ac = AGGLOMERATION_COEFFICIENT)
+    #fine tune
+    model = finetune_model(meta_mean, val_subj, nc=NUM_CLASSES, scaler=scaler, agglomeration=agglomeration)
+    #testing
+    acc = test_model(model, test_subj, nc=NUM_CLASSES, scaler=scaler, agglomeration=agglomeration)
     results[val_subj] = acc
     print(f"Accuracy for {val_subj}: {acc:.3f}")
 print("\nAverage LOSO accuracy:", np.mean(list(results.values())))
