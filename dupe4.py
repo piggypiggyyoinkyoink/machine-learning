@@ -152,7 +152,7 @@ if True:
     # training subjects = all except the test subject
     train_subj = [s for s in subjects if s != test_subj]
     # load data for training subjects
-    X_train, y_train = load_subjects(train_subj, nc=50)  # function to load/stack as before
+    X_train, y_train = load_subjects(train_subj, nc=50)  
     X_test,  y_test  = load_subjects([test_subj], train=False, nc=50)
     X_train, X_test = scale_features(X_train, X_test)
     X_train, X_test = agg_features(X_train, X_test, AGGLOMERATION_COEFFICIENT)
