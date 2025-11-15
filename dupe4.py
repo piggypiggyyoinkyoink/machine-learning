@@ -13,6 +13,8 @@ from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
 from sklearn.metrics import accuracy_score, classification_report
 from sklearn.pipeline import Pipeline
 from sklearn.compose import ColumnTransformer
+from sklearn.linear_model import LogisticRegression
+
 
 
 
@@ -137,8 +139,11 @@ model = StackingClassifier( #all this bs increases accuracy by 0.002
 )
 model = KNeighborsClassifier(n_neighbors=1)
 
-model = RidgeClassifier(alpha=1.0)
-
+model = LogisticRegression(
+        penalty="l2",
+        C=1.0,
+        max_iter=200
+    )
 accs = []
 #Cycling through all subjects using one to test and the others as train (LOSO-CV)
 #for test_subj in subjects:
@@ -153,7 +158,7 @@ if True:
     train_subj = [s for s in subjects if s != test_subj]
     # load data for training subjects
     X_train, y_train = load_subjects(train_subj, nc=50)  
-    X_test,  y_test  = load_subjects([test_subj], train=False, nc=50)
+    X_test,  y_test  = load_subjects([test_subj], train=False, nc=1654)
     X_train, X_test = scale_features(X_train, X_test)
     X_train, X_test = agg_features(X_train, X_test, AGGLOMERATION_COEFFICIENT)
     print(X_train.shape, X_test.shape)
