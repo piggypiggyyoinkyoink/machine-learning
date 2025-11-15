@@ -8,7 +8,7 @@ import numpy as np
 from sklearn import preprocessing, svm, cluster
 from sklearn import svm
 from sklearn.neighbors import KNeighborsClassifier
-from sklearn.ensemble import StackingClassifier, RandomForestClassifier
+from sklearn.ensemble import HistGradientBoostingClassifier, StackingClassifier, RandomForestClassifier, VotingClassifier
 from sklearn.decomposition import PCA
 from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
 from sklearn.metrics import accuracy_score, classification_report
@@ -164,19 +164,34 @@ def test_model(model, test_subj, nc=50, scaler=None, agglomeration=None):
     y_pred = model.predict(X_test)
     return accuracy_score(y_test, y_pred)
 
+def ensemble_train(models, subjects, ac=725, nc=100):
+    X, y = load_subjects(subjects, train=0, nc=nc)
+    scaler = StandardScaler().fit(X)
+    #scale
+    X = scaler.transform(X)
+    #agglomerate
+    agglomeration = cluster.FeatureAgglomeration(n_clusters=ac)
+    agglomeration.fit(X)
+    X = agglomeration.transform(X)
+    m = VotingClassifier(
+    estimators=[('model'+str(i), models[i]) for i in range(len(models))],
+    voting='hard')
+    m.fit(X, y)
+    return m, scaler, agglomeration
 
 #program start
 
 subjects = [f"sub-{i:02d}" for i in range(1, 11)]
 results = {}
 TEST_INDEX = 0 #0-9 - which subject to use as test
-NUM_CLASSES = 100 #number up to 1654
+NUM_CLASSES = 50 #number up to 1654
 AGGLOMERATION_COEFFICIENT=725
 test_subj = subjects[TEST_INDEX]
-subjects = subjects[0:TEST_INDEX] + subjects[TEST_INDEX+1:]
+non_test_subjects = subjects[0:TEST_INDEX] + subjects[TEST_INDEX+1:]
 results = []
-for val_subj in subjects:
-    train_subjects = [s for s in subjects if s != val_subj]
+models = []
+for val_subj in non_test_subjects:
+    train_subjects = [s for s in non_test_subjects if s != val_subj]
     print(f"\nUsing {val_subj} as validation subject:")
     #Training
     mean, scaler, agglomeration = train_model(train_subjects, nc=NUM_CLASSES, ac = AGGLOMERATION_COEFFICIENT)
@@ -185,5 +200,12 @@ for val_subj in subjects:
     #Testing
     acc = test_model(model, test_subj, nc=NUM_CLASSES, scaler=scaler, agglomeration=agglomeration)
     results.append(acc)
+    models.append(model)
     print(f"Accuracy for {val_subj}: {acc:.3f}")
 print("AVERAGE ACCURACY:", np.mean(results))
+
+#Train ensemble model
+m, scaler, agglomeration = ensemble_train(models, non_test_subjects, ac=AGGLOMERATION_COEFFICIENT, nc=NUM_CLASSES)
+#test ensemble model
+esaccuracy = test_model(m, test_subj, nc=NUM_CLASSES, scaler=scaler, agglomeration=agglomeration)
+print("ENSEMBLE ACCURACY:", esaccuracy)
