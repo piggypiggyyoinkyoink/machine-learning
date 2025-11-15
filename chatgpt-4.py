@@ -120,7 +120,12 @@ def train_model(subjects, alpha=1.0,nc=50, ac=725):
         #agglomerate
         X = agg_features(X, test_features=None, a=ac)
 
-        clf = RidgeClassifier(alpha=alpha)
+        #clf = RidgeClassifier(alpha=alpha)
+        clf = LogisticRegression(
+        penalty="l2",
+        C=1.0,
+        max_iter=200
+    )
         clf.fit(X, y)
         weights.append(clf.coef_)
     weights = np.stack(weights)  # (num_subjects, n_classes, n_features)
@@ -128,7 +133,6 @@ def train_model(subjects, alpha=1.0,nc=50, ac=725):
     return meta_mean
 
 
-from sklearn.linear_model import LogisticRegression
 
 def finetune_model(meta_mean, test_sbj, few_shot=150, alpha=1.0, nc=50, ac=725):
     # Load validation data for the held-out subject
@@ -146,18 +150,22 @@ def finetune_model(meta_mean, test_sbj, few_shot=150, alpha=1.0, nc=50, ac=725):
     # Feature agglomeration
     X_train, X_test = agg_features(X_train, X_test, a=ac)
 
-    clf = RidgeClassifier(alpha=alpha)
+    # Use warm-start logistic regression for clean fine-tuning
+    clf = LogisticRegression(
+        penalty="l2",
+        C=1.0,
+        fit_intercept=False,
+        warm_start=True,
+        max_iter=200
+    )
     classes = np.unique(y_train).tolist()
     classes = [c-1 for c in classes]  
     print(classes)
-    #n_features = meta_mean.shape[1]
-    clf.fit(X_train, y_train)
+
+    # Initialize weights from the meta-learned prior
     clf.classes_ = classes
     clf.coef_ = meta_mean[classes].copy()
     clf.intercept_ = np.zeros(len(classes))
-    # Initialize weights from the meta-learned prior
-    #clf.classes_ = np.arange(nc)
-    #clf.coef_ = meta_mean.copy()
 
     # Fine-tune starting DIRECTLY from meta-weights
     clf.fit(X_train, y_train)
@@ -174,7 +182,7 @@ subjects = [f"sub-{i:02d}" for i in range(1, 11)]
 results = {}
 TEST_INDEX = 0
 NUM_CLASSES = 50
-FEW_SHOT = 50
+FEW_SHOT = 100
 ALPHA = 1.0
 AGGLOMERATION_COEFFICIENT=725
 test_subj = subjects[TEST_INDEX]
