@@ -242,5 +242,3 @@ esaccuracy = test_model(m, X_test, y_test, scaler=scaler, agglomeration=agglomer
 print("ENSEMBLE ACCURACY:", esaccuracy) 
 #accuracy with all 1654 classes: 0.6744256348246674  15/11/25  (0.6367 without ensemble)
 #500 classes: 0.802 with ensemble, 0.753 without
-
-#NOTE: we currently load the full data set like a bajillion times - this is bad for time but whatever
