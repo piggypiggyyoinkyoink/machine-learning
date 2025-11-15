@@ -228,8 +228,9 @@ def ensemble_train(models, X, y, ac=725):
 subjects = [f"sub-{i:02d}" for i in range(1, 11)]
 TEST_INDEX = 0 #0-9 - which subject to use as test
 NUM_CLASSES = 100 #number up to 1654
-NUM_TRAIN_SUBJECTS = 8
-AGGLOMERATION_COEFFICIENT=725
+NUM_TRAIN_SUBJECTS = 8 #there is no reason to change this, ever
+COEFFICIENT_OF_AGGLOMERATION=725 #number up to 1173, 725 seems to be good
+
 test_subj = subjects[TEST_INDEX]
 non_test_subjects = subjects[0:TEST_INDEX] + subjects[TEST_INDEX+1:]
 results = []
@@ -248,7 +249,7 @@ for i in range(len(non_test_subjects)):
     y_val = valid_labels[i]
 
     #Training
-    mean, scaler, agglomeration = train_model(X_train_arr, y_train_arr, ac = AGGLOMERATION_COEFFICIENT, num_subjects=NUM_TRAIN_SUBJECTS)
+    mean, scaler, agglomeration = train_model(X_train_arr, y_train_arr, ac = COEFFICIENT_OF_AGGLOMERATION, num_subjects=NUM_TRAIN_SUBJECTS)
     
     #Fine tuning
     model = finetune_model(mean, X_val, y_val, scaler=scaler, agglomeration=agglomeration)
@@ -266,7 +267,7 @@ print("AVERAGE ACCURACY:", np.mean(results))
 print("AVENGERS: ENSEMBLE")
 X_train = np.vstack(X_train_arr)
 y_train = np.hstack(y_train_arr)
-m, scaler, agglomeration = ensemble_train(models, X_train, y_train, ac=AGGLOMERATION_COEFFICIENT)
+m, scaler, agglomeration = ensemble_train(models, X_train, y_train, ac=COEFFICIENT_OF_AGGLOMERATION)
 
 #Test ensemble model
 esaccuracy = test_model(m, X_test, y_test, scaler=scaler, agglomeration=agglomeration)
