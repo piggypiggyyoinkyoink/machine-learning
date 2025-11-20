@@ -6,6 +6,7 @@ import scipy.io as sio
 from sklearn.model_selection import train_test_split
 import numpy as np
 from sklearn import preprocessing, svm, cluster
+from sklearn.preprocessing import PolynomialFeatures
 from sklearn import svm
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.ensemble import HistGradientBoostingClassifier, StackingClassifier, RandomForestClassifier, VotingClassifier
@@ -126,26 +127,40 @@ def load_data(nc=100):
     return train_features, train_labels, valid_features, valid_labels, test_features, test_labels
 
 
+def fit_preprocessors(train_features, ac=725):
+    # pool all subjects’ TRAIN data
+    X = np.vstack(train_features)
+    
+    poly = PolynomialFeatures(degree=2, include_bias=False)
+    #poly.fit(X)
+    #X = poly.transform(X)
+
+    scaler = StandardScaler().fit(X)
+    X = scaler.transform(X)
+
+    agglomeration = cluster.FeatureAgglomeration(n_clusters=ac).fit(X)
+
+    return poly, scaler, agglomeration
 
 
-def train_model(X_train_arr, y_train_arr, ac=725, num_subjects=8):
+def train_model(X_train_arr, y_train_arr, ac=725, num_subjects=8, scaler=None, agglomeration=None):
     weights = []
     #Fit model to each subject individually
     for i in range(num_subjects):
         #Get training data for the subject
         X, y = X_train_arr[i], y_train_arr[i]
         #Scale data
-        scaler = StandardScaler().fit(X)
+        #scaler = StandardScaler().fit(X)
         X = scaler.transform(X)
         #Agglomerate data
-        agglomeration = cluster.FeatureAgglomeration(n_clusters=ac)
-        agglomeration.fit(X)
+        #agglomeration = cluster.FeatureAgglomeration(n_clusters=ac)
+        #agglomeration.fit(X)
         X = agglomeration.transform(X)
 
         #Fit model
         clf = LogisticRegression(
         penalty="l2",
-        C=1.0,
+        C=1.5,
         max_iter=200
         )
         clf.fit(X, y)
@@ -157,7 +172,7 @@ def train_model(X_train_arr, y_train_arr, ac=725, num_subjects=8):
     mean = np.mean(weights, axis=0)
     #Return mean weight to be used for fine tuning
     #Return the scaler and agglomeration to be used in validation and testing
-    return mean, scaler, agglomeration
+    return mean#, scaler, agglomeration
 
 
 
@@ -171,7 +186,7 @@ def finetune_model(train_mean, X, y, scaler=None, agglomeration=None):
     #Initialise warm-start logistic regression classifer
     clf = LogisticRegression(
         penalty="l2",
-        C=1.0,
+        C=1.5,
         fit_intercept=False,
         warm_start=True,
         max_iter=200
@@ -214,6 +229,7 @@ def ensemble_train(models, X, y, ac=725):
     m = VotingClassifier(
     estimators=[('model'+str(i), models[i]) for i in range(len(models))],
     voting='hard')
+
     m.fit(X, y)
 
     #Return the model, scaler and agglomeration for testing purposes
@@ -240,6 +256,7 @@ models = []
 train_features, train_labels, valid_features, valid_labels, test_features, test_labels = load_data(nc=NUM_CLASSES)
 X_test = test_features[TEST_INDEX]
 y_test = test_labels[TEST_INDEX]
+poly, scaler, agglomeration = fit_preprocessors(train_features)
 for i in range(len(non_test_subjects)):
     #Organise data
     val_subj = non_test_subjects[i]
@@ -249,7 +266,7 @@ for i in range(len(non_test_subjects)):
     y_val = valid_labels[i]
 
     #Training
-    mean, scaler, agglomeration = train_model(X_train_arr, y_train_arr, ac = COEFFICIENT_OF_AGGLOMERATION, num_subjects=NUM_TRAIN_SUBJECTS)
+    mean = train_model(X_train_arr, y_train_arr, ac = COEFFICIENT_OF_AGGLOMERATION, num_subjects=NUM_TRAIN_SUBJECTS, scaler=scaler, agglomeration=agglomeration)
     
     #Fine tuning
     model = finetune_model(mean, X_val, y_val, scaler=scaler, agglomeration=agglomeration)
