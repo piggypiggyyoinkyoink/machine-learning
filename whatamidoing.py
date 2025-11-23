@@ -131,7 +131,7 @@ def fit_preprocessors(train_features, ac=725):
     # pool all subjects’ TRAIN data
     X = np.vstack(train_features)
     
-    poly = PolynomialFeatures(degree=2, include_bias=False)
+    #poly = PolynomialFeatures(degree=2, include_bias=False)
     #poly.fit(X)
     #X = poly.transform(X)
 
@@ -140,8 +140,12 @@ def fit_preprocessors(train_features, ac=725):
 
     agglomeration = cluster.FeatureAgglomeration(n_clusters=ac).fit(X)
 
-    return poly, scaler, agglomeration
+    return scaler, agglomeration
 
+def preprocess_data(X, scaler, agglomeration):
+    X = scaler.transform(X)
+    X = agglomeration.transform(X)
+    return X
 
 def train_model(X_train_arr, y_train_arr, ac=725, num_subjects=8, scaler=None, agglomeration=None):
     weights = []
@@ -178,10 +182,7 @@ def train_model(X_train_arr, y_train_arr, ac=725, num_subjects=8, scaler=None, a
 
 
 def finetune_model(train_mean, X, y, scaler=None, agglomeration=None):
-    #Normalise 
-    X = scaler.transform(X)
-    #Agglomerate
-    X = agglomeration.transform(X)
+    X = preprocess_data(X, scaler=scaler, agglomeration=agglomeration)
 
     #Initialise warm-start logistic regression classifer
     clf = LogisticRegression(
@@ -207,8 +208,7 @@ def finetune_model(train_mean, X, y, scaler=None, agglomeration=None):
 
 def test_model(model, X_test, y_test, scaler=None, agglomeration=None):
     #Normalise and Agglomerate
-    X_test = scaler.transform(X_test)
-    X_test = agglomeration.transform(X_test)
+    X_test = preprocess_data(X_test, scaler=scaler, agglomeration=agglomeration)
     #Evaluation
     y_pred = model.predict(X_test)
     return accuracy_score(y_test, y_pred)
@@ -216,14 +216,10 @@ def test_model(model, X_test, y_test, scaler=None, agglomeration=None):
 
 
 
-def ensemble_train(models, X, y, ac=725):
+def ensemble_train(models, X, y, scaler, agglomeration):
     #Scale data
-    scaler = StandardScaler().fit(X)
-    X = scaler.transform(X)
-    #Agglomerate features
-    agglomeration = cluster.FeatureAgglomeration(n_clusters=ac)
-    agglomeration.fit(X)
-    X = agglomeration.transform(X)
+    X = preprocess_data(X, scaler=scaler, agglomeration=agglomeration)
+
 
     #Fit ensemble model
     m = VotingClassifier(
@@ -233,7 +229,7 @@ def ensemble_train(models, X, y, ac=725):
     m.fit(X, y)
 
     #Return the model, scaler and agglomeration for testing purposes
-    return m, scaler, agglomeration
+    return m
 
 
 
@@ -243,7 +239,7 @@ def ensemble_train(models, X, y, ac=725):
 #Initialise variables
 subjects = [f"sub-{i:02d}" for i in range(1, 11)]
 TEST_INDEX = 0 #0-9 - which subject to use as test
-NUM_CLASSES = 100 #number up to 1654
+NUM_CLASSES = 20 #number up to 1654
 NUM_TRAIN_SUBJECTS = 8 #there is no reason to change this, ever
 COEFFICIENT_OF_AGGLOMERATION=725 #number up to 1173, 725 seems to be good
 
@@ -256,7 +252,7 @@ models = []
 train_features, train_labels, valid_features, valid_labels, test_features, test_labels = load_data(nc=NUM_CLASSES)
 X_test = test_features[TEST_INDEX]
 y_test = test_labels[TEST_INDEX]
-poly, scaler, agglomeration = fit_preprocessors(train_features)
+scaler, agglomeration = fit_preprocessors(train_features)
 for i in range(len(non_test_subjects)):
     #Organise data
     val_subj = non_test_subjects[i]
@@ -284,7 +280,7 @@ print("AVERAGE ACCURACY:", np.mean(results))
 print("AVENGERS: ENSEMBLE")
 X_train = np.vstack(X_train_arr)
 y_train = np.hstack(y_train_arr)
-m, scaler, agglomeration = ensemble_train(models, X_train, y_train, ac=COEFFICIENT_OF_AGGLOMERATION)
+m = ensemble_train(models, X_train, y_train, scaler, agglomeration)
 
 #Test ensemble model
 esaccuracy = test_model(m, X_test, y_test, scaler=scaler, agglomeration=agglomeration)
