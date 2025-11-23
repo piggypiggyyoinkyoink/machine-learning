@@ -127,6 +127,7 @@ def load_data(nc=100):
     return train_features, train_labels, valid_features, valid_labels, test_features, test_labels
 
 
+
 def fit_preprocessors(train_features, ac=725):
     # pool all subjects’ TRAIN data
     X = np.vstack(train_features)
@@ -138,16 +139,21 @@ def fit_preprocessors(train_features, ac=725):
     scaler = StandardScaler().fit(X)
     X = scaler.transform(X)
 
+    agglomeration = None
     agglomeration = cluster.FeatureAgglomeration(n_clusters=ac).fit(X)
-
     return scaler, agglomeration
 
-def preprocess_data(X, scaler, agglomeration):
+
+
+def preprocess_data(X, scaler, agglomeration=None):
     X = scaler.transform(X)
-    X = agglomeration.transform(X)
+    if agglomeration is not None:
+        X = agglomeration.transform(X)
     return X
 
-def train_model(X_train_arr, y_train_arr, ac=725, num_subjects=8, scaler=None, agglomeration=None):
+
+
+def train_model(X_train_arr, y_train_arr, num_subjects=8, scaler=None, agglomeration=None):
     weights = []
     #Fit model to each subject individually
     for i in range(num_subjects):
@@ -155,11 +161,8 @@ def train_model(X_train_arr, y_train_arr, ac=725, num_subjects=8, scaler=None, a
         X, y = X_train_arr[i], y_train_arr[i]
         #Scale data
         #scaler = StandardScaler().fit(X)
-        X = scaler.transform(X)
-        #Agglomerate data
-        #agglomeration = cluster.FeatureAgglomeration(n_clusters=ac)
-        #agglomeration.fit(X)
-        X = agglomeration.transform(X)
+        X = preprocess_data(X, scaler=scaler, agglomeration=agglomeration)
+
 
         #Fit model
         clf = LogisticRegression(
@@ -239,9 +242,9 @@ def ensemble_train(models, X, y, scaler, agglomeration):
 #Initialise variables
 subjects = [f"sub-{i:02d}" for i in range(1, 11)]
 TEST_INDEX = 0 #0-9 - which subject to use as test
-NUM_CLASSES = 20 #number up to 1654
+NUM_CLASSES = 100 #number up to 1654
 NUM_TRAIN_SUBJECTS = 8 #there is no reason to change this, ever
-COEFFICIENT_OF_AGGLOMERATION=725 #number up to 1173, 725 seems to be good
+COEFFICIENT_OF_AGGLOMERATION=950 #number up to 1173, 725 seems to be good
 
 test_subj = subjects[TEST_INDEX]
 non_test_subjects = subjects[0:TEST_INDEX] + subjects[TEST_INDEX+1:]
@@ -252,7 +255,7 @@ models = []
 train_features, train_labels, valid_features, valid_labels, test_features, test_labels = load_data(nc=NUM_CLASSES)
 X_test = test_features[TEST_INDEX]
 y_test = test_labels[TEST_INDEX]
-scaler, agglomeration = fit_preprocessors(train_features)
+scaler, agglomeration = fit_preprocessors(train_features, ac=COEFFICIENT_OF_AGGLOMERATION)
 for i in range(len(non_test_subjects)):
     #Organise data
     val_subj = non_test_subjects[i]
@@ -262,7 +265,7 @@ for i in range(len(non_test_subjects)):
     y_val = valid_labels[i]
 
     #Training
-    mean = train_model(X_train_arr, y_train_arr, ac = COEFFICIENT_OF_AGGLOMERATION, num_subjects=NUM_TRAIN_SUBJECTS, scaler=scaler, agglomeration=agglomeration)
+    mean = train_model(X_train_arr, y_train_arr, num_subjects=NUM_TRAIN_SUBJECTS, scaler=scaler, agglomeration=agglomeration)
     
     #Fine tuning
     model = finetune_model(mean, X_val, y_val, scaler=scaler, agglomeration=agglomeration)
