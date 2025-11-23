@@ -128,13 +128,9 @@ def load_data(nc=100):
 
 
 
-def fit_preprocessors(train_features, ac=725):
+def fit_preprocessors(train_features, ac=445):
     # pool all subjects’ TRAIN data
     X = np.vstack(train_features)
-    
-    #poly = PolynomialFeatures(degree=2, include_bias=False)
-    #poly.fit(X)
-    #X = poly.transform(X)
 
     scaler = StandardScaler().fit(X)
     X = scaler.transform(X)
@@ -179,7 +175,7 @@ def train_model(X_train_arr, y_train_arr, num_subjects=8, scaler=None, agglomera
     mean = np.mean(weights, axis=0)
     #Return mean weight to be used for fine tuning
     #Return the scaler and agglomeration to be used in validation and testing
-    return mean#, scaler, agglomeration
+    return mean
 
 
 
@@ -242,9 +238,9 @@ def ensemble_train(models, X, y, scaler, agglomeration):
 #Initialise variables
 subjects = [f"sub-{i:02d}" for i in range(1, 11)]
 TEST_INDEX = 0 #0-9 - which subject to use as test
-NUM_CLASSES = 100 #number up to 1654
+NUM_CLASSES = 500 #number up to 1654
 NUM_TRAIN_SUBJECTS = 8 #there is no reason to change this, ever
-COEFFICIENT_OF_AGGLOMERATION=950 #number up to 1173, 725 seems to be good
+COEFFICIENT_OF_AGGLOMERATION=445 #number up to 1173, 445 seems to be good
 
 test_subj = subjects[TEST_INDEX]
 non_test_subjects = subjects[0:TEST_INDEX] + subjects[TEST_INDEX+1:]

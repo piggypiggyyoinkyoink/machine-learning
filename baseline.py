@@ -130,16 +130,10 @@ def load_data(nc=100):
 def fit_preprocessors(train_features, ac=445):
     # pool all subjects’ TRAIN data
     X = np.vstack(train_features)
-    #y = np.hstack(train_labels)
-    #poly = PolynomialFeatures(degree=2, include_bias=False)
-    #poly.fit(X)
-    #X = poly.transform(X)
 
     scaler = StandardScaler().fit(X)
     X = scaler.transform(X)
 
-    agglomeration = None
-    #agglomeration = LinearDiscriminantAnalysis(n_components=75).fit(X, y)
     agglomeration = cluster.FeatureAgglomeration(n_clusters=ac).fit(X)
     return scaler, agglomeration
 
@@ -159,10 +153,8 @@ def train_model(X_train_arr, y_train_arr, num_subjects=8, scaler=None, agglomera
     for i in range(num_subjects):
         #Get training data for the subject
         X, y = X_train_arr[i], y_train_arr[i]
-        #Scale data
-        #scaler = StandardScaler().fit(X)
+        #Preprocess data
         X = preprocess_data(X, scaler=scaler, agglomeration=agglomeration)
-
 
         #Fit model
         clf = LogisticRegression(
@@ -185,6 +177,7 @@ def train_model(X_train_arr, y_train_arr, num_subjects=8, scaler=None, agglomera
 
 
 def finetune_model(train_mean, X, y, scaler=None, agglomeration=None):
+    #Preprocesing
     X = preprocess_data(X, scaler=scaler, agglomeration=agglomeration)
 
     #Initialise warm-start logistic regression classifer
