@@ -19,8 +19,18 @@ from sklearn.compose import ColumnTransformer
 from sklearn.linear_model import RidgeClassifier
 
 
+def fit_agg(X, ac=400):
+        agg = cluster.FeatureAgglomeration(n_clusters=ac)
+        agg.fit_transform(X)
+        return agg
+    
+def transform_agg(X, agg):
+    X_transformed = agg.transform(X)
+    #return X_transformed
+    return X_transformed
 
-def load_data(nc=100):
+
+def load_data(nc=100, brain_ac = 400, image_ac=400, text_ac=400):
     #Data paths
     data_dir_root = os.path.join('./data', 'ThingsEEG-Text')
     image_model = 'pytorch/cornet_s'
@@ -51,10 +61,15 @@ def load_data(nc=100):
         image = sio.loadmat(os.path.join(image_dir_seen, 'feat_pca_train.mat'))['data'].astype('double') * 50.0
         text  = sio.loadmat(os.path.join(text_dir_seen, 'text_feat_train.mat'))['data'].astype('double') * 2.0
         label = sio.loadmat(os.path.join(brain_dir, 'eeg_train_data_within.mat'))['class_idx'].T.astype('int')
-        brain = brain[:, :, 20:80]  # 70ms–400ms
-
+        #Idk what this does but it was in the colab code and i aint touching it
+        #brain = brain[:, :, 20:80]  # 70ms–400ms
+        print("Brain shape:", brain.shape)
+        print("Image shape:", image.shape)
+        print("Text shape:", text.shape)
+        print("Label shape:", label.shape)
         brain = np.reshape(brain, (brain.shape[0], -1))
-        image = image[:, :100]
+        #image = image[:, :100]
+
         #Only get the correct number of classes
         idx = np.squeeze(np.where(label < (NUM_CLASSES+1), True, False))
         brain, image, text, label = brain[idx, :], image[idx, :], text[idx, :], label[idx]
@@ -88,6 +103,29 @@ def load_data(nc=100):
         
         num+=1 #important
 
+    #Agglomerate brain data
+    full_train_brain = [None]*10
+    for i in range(10):
+        full_train_brain[i] = np.vstack(train_brain[i])
+    full_train_brain = np.vstack(full_train_brain)
+
+    agg_b = fit_agg(full_train_brain, ac=brain_ac)
+
+    full_train_image = [None]*10
+    for i in range(10):
+        full_train_image[i] = np.vstack(train_image[i])
+    full_train_image = np.vstack(full_train_image)
+
+    agg_i = fit_agg(full_train_image, ac=image_ac)
+
+    full_train_text = [None]*10
+    for i in range(10):
+        full_train_text[i] = np.vstack(train_text[i])
+    full_train_text = np.vstack(full_train_text)
+
+    agg_t = fit_agg(full_train_text, ac=text_ac)
+
+
     #Initialise lists
     train_features = []
     valid_features = []
@@ -100,8 +138,11 @@ def load_data(nc=100):
     for i in range(10):
         #Train data
         train_brain[i] = np.vstack(train_brain[i])
+        train_brain[i] = transform_agg(train_brain[i], agg_b)
         train_image[i] = np.vstack(train_image[i])
+        train_image[i] = transform_agg(train_image[i], agg_i)
         train_text[i] = np.vstack(train_text[i])
+        train_text[i] = transform_agg(train_text[i], agg_t)
         train_label[i] = np.vstack(train_label[i])
         #add to final lists
         train_features.append(np.hstack((train_brain[i], train_image[i], train_text[i])))
@@ -109,8 +150,11 @@ def load_data(nc=100):
 
         #Validation data
         valid_brain[i] = np.vstack(valid_brain[i])
+        valid_brain[i] = transform_agg(valid_brain[i], agg_b)
         valid_image[i] = np.vstack(valid_image[i])
+        valid_image[i] = transform_agg(valid_image[i], agg_i)
         valid_text[i] = np.vstack(valid_text[i])
+        valid_text[i] = transform_agg(valid_text[i], agg_t)
         valid_label[i] = np.vstack(valid_label[i])
         #add to final lists
         valid_features.append(np.hstack((valid_brain[i], valid_image[i], valid_text[i])))
@@ -118,8 +162,11 @@ def load_data(nc=100):
 
         #Test data
         test_brain[i] = np.vstack(test_brain[i])
+        test_brain[i] = transform_agg(test_brain[i], agg_b)
         test_image[i] = np.vstack(test_image[i])
+        test_image[i] = transform_agg(test_image[i], agg_i)
         test_text[i] = np.vstack(test_text[i])
+        test_text[i] = transform_agg(test_text[i], agg_t)
         test_label[i] = np.vstack(test_label[i])
         #add to final lists
         test_features.append(np.hstack((test_brain[i], test_image[i], test_text[i])))
@@ -219,9 +266,12 @@ def test_model(model, X_test, y_test, scaler=None, agglomeration=None):
 subjects = [f"sub-{i:02d}" for i in range(1, 11)]
 TEST_INDEX = 0 #0-9 - which subject to use as test
 VALIDATION_INDEX = 0 #0-8 - which subject to use for validation
-NUM_CLASSES = 100 #number up to 1654
+NUM_CLASSES = 150 #number up to 1654
 NUM_TRAIN_SUBJECTS = 8 #there is no reason to change this, ever
-COEFFICIENT_OF_AGGLOMERATION=445 #number up to 1173
+COEFFICIENT_OF_AGGLOMERATION=250 #number up to sum(BAC+IAC+TAC)
+BAC = 400
+IAC = 100
+TAC = 100
 
 test_subj = subjects[TEST_INDEX]
 non_test_subjects = subjects[0:TEST_INDEX] + subjects[TEST_INDEX+1:]
@@ -229,12 +279,12 @@ results = []
 models = []
 
 #Load data
-train_features, train_labels, valid_features, valid_labels, test_features, test_labels = load_data(nc=NUM_CLASSES)
+train_features, train_labels, valid_features, valid_labels, test_features, test_labels = load_data(nc=NUM_CLASSES, brain_ac=BAC, image_ac=IAC, text_ac=TAC)
 X_test = test_features[TEST_INDEX]
 y_test = test_labels[TEST_INDEX]
 
 #Fit preprocessors for future use
-scaler, agglomeration = fit_preprocessors(train_features)
+scaler, agglomeration = fit_preprocessors(train_features, ac=COEFFICIENT_OF_AGGLOMERATION)
 
 #Organise data
 val_subj = non_test_subjects[VALIDATION_INDEX]
@@ -259,7 +309,18 @@ print(f"Accuracy: {acc:.3f}")
 
 
 
+
+
+
+
+
+
 ###  CHATGPT VISUALISATIONS
+
+
+
+
+
 
 
 # === Compute and plot Precision-Recall curve ===

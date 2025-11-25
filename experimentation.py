@@ -51,7 +51,6 @@ def load_data(nc=100):
         image = sio.loadmat(os.path.join(image_dir_seen, 'feat_pca_train.mat'))['data'].astype('double') * 50.0
         text  = sio.loadmat(os.path.join(text_dir_seen, 'text_feat_train.mat'))['data'].astype('double') * 2.0
         label = sio.loadmat(os.path.join(brain_dir, 'eeg_train_data_within.mat'))['class_idx'].T.astype('int')
-        #Idk what this does but it was in the colab code and i aint touching it
         brain = brain[:, :, 20:80]  # 70ms–400ms
 
         brain = np.reshape(brain, (brain.shape[0], -1))
@@ -126,8 +125,10 @@ def load_data(nc=100):
         test_features.append(np.hstack((test_brain[i], test_image[i], test_text[i])))
         test_labels.append(test_label[i].ravel())
     #Return
+    print(np.array(test_labels).shape)
+    print(test_labels[0][197])
+    print(test_labels[0][193])
     return train_features, train_labels, valid_features, valid_labels, test_features, test_labels
-
 
 
 def fit_preprocessors(train_features, ac=445):
@@ -137,7 +138,6 @@ def fit_preprocessors(train_features, ac=445):
     scaler = StandardScaler().fit(X)
     X = scaler.transform(X)
 
-    agglomeration = None
     agglomeration = cluster.FeatureAgglomeration(n_clusters=ac).fit(X)
     return scaler, agglomeration
 
@@ -152,8 +152,9 @@ def preprocess_data(X, scaler, agglomeration=None):
 
 
 def train_model(X_train_arr, y_train_arr, num_subjects=8, scaler=None, agglomeration=None):
-    weights = []
+    coefs = []
     #Fit model to each subject individually
+    #Get training data for the subject
     for i in range(num_subjects):
         #Get training data for the subject
         X, y = X_train_arr[i], y_train_arr[i]
@@ -169,40 +170,36 @@ def train_model(X_train_arr, y_train_arr, num_subjects=8, scaler=None, agglomera
         max_iter=200
         )
         clf.fit(X, y)
-        #Yoink weights
-        weights.append(clf.coef_)
-
-    #Average weights across subjects
-    weights = np.stack(weights)  
-    mean = np.mean(weights, axis=0)
+        coefs.append(clf.coef_)
     #Return mean weight to be used for fine tuning
     #Return the scaler and agglomeration to be used in validation and testing
-    return mean
+    return coefs
 
 
 
-
-def finetune_model(train_mean, X, y, scaler=None, agglomeration=None):
+def finetune_model(coefs, X, y, scaler=None, agglomeration=None):
+    #Preprocesing
+    clfs = []
     X = preprocess_data(X, scaler=scaler, agglomeration=agglomeration)
-
-    #Initialise warm-start logistic regression classifer
-    clf = LogisticRegression(
+    for i in range(len(coefs)):
+        clf = LogisticRegression(
         penalty="l2",
         C=1.5,
-        fit_intercept=False,
+        max_iter=200,
         warm_start=True,
-        max_iter=200
-    )
-    #Initialize weights from training
-    classes = np.unique(y).tolist()
-    classes = [c-1 for c in classes]  
-    clf.classes_ = classes
-    clf.coef_ = train_mean[classes].copy()
-    clf.intercept_ = np.zeros(len(classes))
-    #Fine-tune with validation data
-    clf.fit(X, y)
-    #Return fine-tuned model
-    return clf
+        )
+
+        classes = np.unique(y).tolist()
+        classes = [c-1 for c in classes]  
+        clf.classes_ = classes
+        clf.coef_ = coefs[i].copy()
+        clf.intercept_ = np.zeros(len(classes))
+        
+        #Fine-tune with validation data
+        clf.fit(X, y)
+        clfs.append(clf)
+        #Return fine-tuned model
+    return clfs
 
 
 
@@ -213,8 +210,6 @@ def test_model(model, X_test, y_test, scaler=None, agglomeration=None):
     #Evaluation
     y_pred = model.predict(X_test)
     return accuracy_score(y_test, y_pred)
-
-
 
 
 def ensemble_train(models, X, y, scaler, agglomeration):
@@ -234,15 +229,15 @@ def ensemble_train(models, X, y, scaler, agglomeration):
 
 
 
-
 #PROGRAM START
 
 #Initialise variables
 subjects = [f"sub-{i:02d}" for i in range(1, 11)]
 TEST_INDEX = 0 #0-9 - which subject to use as test
+VALIDATION_INDEX = 0 #0-8 - which subject to use for validation
 NUM_CLASSES = 100 #number up to 1654
 NUM_TRAIN_SUBJECTS = 8 #there is no reason to change this, ever
-COEFFICIENT_OF_AGGLOMERATION=445 #number up to 1173, 445 seems to be good
+COEFFICIENT_OF_AGGLOMERATION=445 #number up to 1173
 
 test_subj = subjects[TEST_INDEX]
 non_test_subjects = subjects[0:TEST_INDEX] + subjects[TEST_INDEX+1:]
@@ -253,51 +248,45 @@ models = []
 train_features, train_labels, valid_features, valid_labels, test_features, test_labels = load_data(nc=NUM_CLASSES)
 X_test = test_features[TEST_INDEX]
 y_test = test_labels[TEST_INDEX]
-scaler, agglomeration = fit_preprocessors(train_features, ac=COEFFICIENT_OF_AGGLOMERATION)
-for i in range(len(non_test_subjects)):
-    #Organise data
-    val_subj = non_test_subjects[i]
-    X_train_arr = [(train_features[j]) for j in range(10) if j != i and j != TEST_INDEX]
-    y_train_arr = [(train_labels[j]) for j in range(10) if j != i and j != TEST_INDEX]
-    X_val = valid_features[i]
-    y_val = valid_labels[i]
 
-    #Training
-    mean = train_model(X_train_arr, y_train_arr, num_subjects=NUM_TRAIN_SUBJECTS, scaler=scaler, agglomeration=agglomeration)
-    
-    #Fine tuning
-    model = finetune_model(mean, X_val, y_val, scaler=scaler, agglomeration=agglomeration)
-    
-    #Testing
+#Fit preprocessors for future use
+scaler, agglomeration = fit_preprocessors(train_features)
+
+#Organise data
+val_subj = non_test_subjects[VALIDATION_INDEX]
+X_train_arr = [(train_features[j]) for j in range(10) if j != VALIDATION_INDEX and j != TEST_INDEX]
+y_train_arr = [(train_labels[j]) for j in range(10) if j != VALIDATION_INDEX and j != TEST_INDEX]
+X_val = valid_features[VALIDATION_INDEX]
+y_val = valid_labels[VALIDATION_INDEX]
+
+#Training
+coefs = train_model(X_train_arr, y_train_arr, num_subjects=NUM_TRAIN_SUBJECTS, scaler=scaler, agglomeration=agglomeration)
+
+#Fine tuning
+models = finetune_model(coefs, X_val, y_val, scaler=scaler, agglomeration=agglomeration)
+
+#Testing
+for model in models:
     acc = test_model(model, X_test, y_test, scaler=scaler, agglomeration=agglomeration)
     results.append(acc)
-    models.append(model)
-    print(f"Accuracy using {val_subj} as validation subject: {acc:.3f}")
+    print(f"\nTest Subject: {test_subj}")
+    print(f"Validation Subject: {val_subj}")
+    print(f"Accuracy: {acc:.3f}")
 
-#Print average accuracy across all validation subjects    
-print("AVERAGE ACCURACY:", np.mean(results))
-
-#Train ensemble model
 print("AVENGERS: ENSEMBLE")
 X_train = np.vstack(X_train_arr)
 y_train = np.hstack(y_train_arr)
-m = ensemble_train(models, X_train, y_train, scaler, agglomeration)
+model = ensemble_train(models, X_train, y_train, scaler, agglomeration)
 
 #Test ensemble model
-esaccuracy = test_model(m, X_test, y_test, scaler=scaler, agglomeration=agglomeration)
+esaccuracy = test_model(model, X_test, y_test, scaler=scaler, agglomeration=agglomeration)
 print("ENSEMBLE ACCURACY:", esaccuracy) 
-
-
-## Accuracy stats (15/11/25)
-#1654 classes: 0.6744256348246674 with ensemble, 0.6367 without 
-#500 classes: 0.802 with ensemble, 0.753 without
-#100 classes: 0.915 with ensemble, 0.883 without
-
 
 
 ###  CHATGPT VISUALISATIONS
 
 
+# === Compute and plot Precision-Recall curve ===
 
 # === ALL DIAGNOSTICS & PLOTS (PR curves, AP table, confusion, F1, dashboard) ===
 
@@ -338,13 +327,13 @@ def ensure_dir(d):
 classes = np.arange(1, NUM_CLASSES + 1)
 
 # predicted probabilities (n_samples x n_classes)
-y_score = get_probas(m, X_test, scaler=scaler, agglomeration=agglomeration)
+y_score = get_probas(model, X_test, scaler=scaler, agglomeration=agglomeration)
 
 # binarize true labels for multi-class PR calculations (shape n_samples x n_classes)
 y_test_bin = label_binarize(y_test, classes=classes)  # classes must match label universe
 
 # predicted labels (for confusion matrix & classification report)
-y_pred = m.predict(preprocess_data(X_test, scaler=scaler, agglomeration=agglomeration))
+y_pred = model.predict(preprocess_data(X_test, scaler=scaler, agglomeration=agglomeration))
 
 # ---------- 1) Per-class Precision-Recall curves and AP ----------
 precision = dict()
@@ -392,7 +381,7 @@ flat_sorted = sorted(flat, key=lambda x: x[1], reverse=True)
 top_confused = flat_sorted[:K]
 
 # ---------- 5) Plots & outputs ----------
-out_dir = "visualisations_improved"
+out_dir = "visualisations_experiment"
 ensure_dir(out_dir)
 
 # 5A: Macro PR curve (interpolated mean over classes) + micro PR
