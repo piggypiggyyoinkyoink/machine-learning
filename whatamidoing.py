@@ -123,7 +123,7 @@ def load_data(nc=100):
         #add to final lists
         test_features.append(np.hstack((test_brain[i], test_image[i], test_text[i])))
         test_labels.append(test_label[i].ravel())
-    #Return shit innit
+    #Return
     return train_features, train_labels, valid_features, valid_labels, test_features, test_labels
 
 
@@ -238,7 +238,7 @@ def ensemble_train(models, X, y, scaler, agglomeration):
 #Initialise variables
 subjects = [f"sub-{i:02d}" for i in range(1, 11)]
 TEST_INDEX = 0 #0-9 - which subject to use as test
-NUM_CLASSES = 500 #number up to 1654
+NUM_CLASSES = 100 #number up to 1654
 NUM_TRAIN_SUBJECTS = 8 #there is no reason to change this, ever
 COEFFICIENT_OF_AGGLOMERATION=445 #number up to 1173, 445 seems to be good
 

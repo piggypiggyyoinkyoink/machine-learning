@@ -123,7 +123,7 @@ def load_data(nc=100):
         #add to final lists
         test_features.append(np.hstack((test_brain[i], test_image[i], test_text[i])))
         test_labels.append(test_label[i].ravel())
-    #Return shit innit
+    #Return
     return train_features, train_labels, valid_features, valid_labels, test_features, test_labels
 
 
