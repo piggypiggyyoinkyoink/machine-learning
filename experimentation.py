@@ -20,8 +20,18 @@ from sklearn.compose import ColumnTransformer
 from sklearn.linear_model import RidgeClassifier
 
 
+def fit_agg(X, ac=400):
+        agg = cluster.FeatureAgglomeration(n_clusters=ac)
+        agg.fit_transform(X)
+        return agg
+    
+def transform_agg(X, agg):
+    X_transformed = agg.transform(X)
+    #return X_transformed
+    return X
 
-def load_data(nc=100):
+
+def load_data(nc=100, brain_ac = 400):
     #Data paths
     data_dir_root = os.path.join('./data', 'ThingsEEG-Text')
     image_model = 'pytorch/cornet_s'
@@ -30,9 +40,9 @@ def load_data(nc=100):
 
     #Initialise variables
     subjects = [f"sub-{i:02d}" for i in range(1, 11)]
-    train_brain, train_image, train_text, train_label = [[] for _ in range(10)], [[] for _ in range(10)], [[] for _ in range(10)], [[] for _ in range(10)]
-    valid_brain, valid_image, valid_text, valid_label = [[] for _ in range(10)], [[] for _ in range(10)], [[] for _ in range(10)], [[] for _ in range(10)]
-    test_brain, test_image, test_text, test_label = [[] for _ in range(10)], [[] for _ in range(10)], [[] for _ in range(10)], [[] for _ in range(10)]
+    train_brain, train_image, train_text, train_label = [[] for i in range(10)], [[] for i in range(10)], [[] for i in range(10)], [[] for i in range(10)]
+    valid_brain, valid_image, valid_text, valid_label = [[] for i in range(10)], [[] for i in range(10)], [[] for i in range(10)], [[] for i in range(10)]
+    test_brain, test_image, test_text, test_label = [[] for i in range(10)], [[] for i in range(10)], [[] for i in range(10)], [[] for i in range(10)]
     NUM_CLASSES = nc
     SAMPLES_PER_CLASS = 10
     TRAIN_PER_CLASS = 5
@@ -53,8 +63,9 @@ def load_data(nc=100):
         text  = sio.loadmat(os.path.join(text_dir_seen, 'text_feat_train.mat'))['data'].astype('double') * 2.0
         label = sio.loadmat(os.path.join(brain_dir, 'eeg_train_data_within.mat'))['class_idx'].T.astype('int')
         #Idk what this does but it was in the colab code and i aint touching it
-        brain = brain[:, :, 27:60]  # 70ms–400ms
+        brain = brain[:, :, 20:80]  # 70ms–400ms
         brain = np.reshape(brain, (brain.shape[0], -1))
+        #print(brain.shape)
         image = image[:, :100]
         #Only get the correct number of classes
         idx = np.squeeze(np.where(label < (NUM_CLASSES+1), True, False))
@@ -89,6 +100,14 @@ def load_data(nc=100):
         
         num+=1 #important
 
+    #Agglomerate brain data
+    full_train_brain = [None]*10
+    for i in range(10):
+        full_train_brain[i] = np.vstack(train_brain[i])
+    full_train_brain = np.vstack(full_train_brain)
+
+    agg = fit_agg(full_train_brain, ac=brain_ac)
+
     #Initialise lists
     train_features = []
     valid_features = []
@@ -101,6 +120,7 @@ def load_data(nc=100):
     for i in range(10):
         #Train data
         train_brain[i] = np.vstack(train_brain[i])
+        #train_brain[i] = transform_agg(train_brain[i], agg)
         train_image[i] = np.vstack(train_image[i])
         train_text[i] = np.vstack(train_text[i])
         train_label[i] = np.vstack(train_label[i])
@@ -110,6 +130,7 @@ def load_data(nc=100):
 
         #Validation data
         valid_brain[i] = np.vstack(valid_brain[i])
+        #valid_brain[i] = transform_agg(valid_brain[i], agg)
         valid_image[i] = np.vstack(valid_image[i])
         valid_text[i] = np.vstack(valid_text[i])
         valid_label[i] = np.vstack(valid_label[i])
@@ -119,6 +140,7 @@ def load_data(nc=100):
 
         #Test data
         test_brain[i] = np.vstack(test_brain[i])
+        #test_brain[i] = transform_agg(test_brain[i], agg)
         test_image[i] = np.vstack(test_image[i])
         test_text[i] = np.vstack(test_text[i])
         test_label[i] = np.vstack(test_label[i])
@@ -182,7 +204,7 @@ def train_model(X_train_arr, y_train_arr, num_subjects=8, scaler=None, agglomera
 
     #Average weights across subjects
     weights = np.stack(weights)  
-    weights2 = np.stack(weights)  
+    weights2 = np.stack(weights2)  
     mean = np.mean(weights, axis=0)
     mean2 = np.mean(weights2, axis=0)
     #Return mean weight to be used for fine tuning
@@ -243,10 +265,10 @@ def ensemble_train(models, X, y, scaler, agglomeration):
     X = preprocess_data(X, scaler=scaler, agglomeration=agglomeration)
 
     #Fit ensemble model
-    m = StackingClassifier(
+    m = VotingClassifier(
     estimators=[('model'+str(i), models[i]) for i in range(len(models))],
-    #voting='hard'
-    final_estimator=MLPClassifier(),
+    voting='hard'
+    #final_estimator=LogisticRegression(),
     )
 
     m.fit(X, y)
@@ -265,6 +287,7 @@ TEST_INDEX = 0 #0-9 - which subject to use as test
 NUM_CLASSES = 100 #number up to 1654
 NUM_TRAIN_SUBJECTS = 8 #there is no reason to change this, ever
 COEFFICIENT_OF_AGGLOMERATION=445 #number up to 1173, 445 seems to be good
+bac = 400
 
 test_subj = subjects[TEST_INDEX]
 non_test_subjects = subjects[0:TEST_INDEX] + subjects[TEST_INDEX+1:]
@@ -272,7 +295,7 @@ results = []
 models = []
 
 #Load data
-train_features, train_labels, valid_features, valid_labels, test_features, test_labels = load_data(nc=NUM_CLASSES)
+train_features, train_labels, valid_features, valid_labels, test_features, test_labels = load_data(nc=NUM_CLASSES, brain_ac = bac)
 X_test = test_features[TEST_INDEX]
 y_test = test_labels[TEST_INDEX]
 scaler, agglomeration = fit_preprocessors(train_features, ac=COEFFICIENT_OF_AGGLOMERATION)
