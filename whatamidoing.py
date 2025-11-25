@@ -294,6 +294,11 @@ print("ENSEMBLE ACCURACY:", esaccuracy)
 #100 classes: 0.915 with ensemble, 0.883 without
 
 
+
+###  CHATGPT VISUALISATIONS
+
+
+
 # === ALL DIAGNOSTICS & PLOTS (PR curves, AP table, confusion, F1, dashboard) ===
 
 import numpy as np
@@ -387,7 +392,7 @@ flat_sorted = sorted(flat, key=lambda x: x[1], reverse=True)
 top_confused = flat_sorted[:K]
 
 # ---------- 5) Plots & outputs ----------
-out_dir = "diagnostics_plots"
+out_dir = "visualisations_improved"
 ensure_dir(out_dir)
 
 # 5A: Macro PR curve (interpolated mean over classes) + micro PR

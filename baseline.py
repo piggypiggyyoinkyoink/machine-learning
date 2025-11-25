@@ -259,6 +259,8 @@ print(f"Accuracy: {acc:.3f}")
 
 
 
+###  CHATGPT VISUALISATIONS
+
 
 # === Compute and plot Precision-Recall curve ===
 
@@ -355,7 +357,7 @@ flat_sorted = sorted(flat, key=lambda x: x[1], reverse=True)
 top_confused = flat_sorted[:K]
 
 # ---------- 5) Plots & outputs ----------
-out_dir = "baseline_diagnostics_plots"
+out_dir = "visualisations_baseline"
 ensure_dir(out_dir)
 
 # 5A: Macro PR curve (interpolated mean over classes) + micro PR
