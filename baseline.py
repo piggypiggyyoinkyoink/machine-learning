@@ -63,12 +63,8 @@ def load_data(nc=100, brain_ac = 400, image_ac=400, text_ac=400):
         label = sio.loadmat(os.path.join(brain_dir, 'eeg_train_data_within.mat'))['class_idx'].T.astype('int')
         #Idk what this does but it was in the colab code and i aint touching it
         #brain = brain[:, :, 20:80]  # 70ms–400ms
-        print("Brain shape:", brain.shape)
-        print("Image shape:", image.shape)
-        print("Text shape:", text.shape)
-        print("Label shape:", label.shape)
-        brain = np.reshape(brain, (brain.shape[0], -1))
         #image = image[:, :100]
+        brain = np.reshape(brain, (brain.shape[0], -1))
 
         #Only get the correct number of classes
         idx = np.squeeze(np.where(label < (NUM_CLASSES+1), True, False))
@@ -266,9 +262,9 @@ def test_model(model, X_test, y_test, scaler=None, agglomeration=None):
 subjects = [f"sub-{i:02d}" for i in range(1, 11)]
 TEST_INDEX = 0 #0-9 - which subject to use as test
 VALIDATION_INDEX = 0 #0-8 - which subject to use for validation
-NUM_CLASSES = 150 #number up to 1654
+NUM_CLASSES = 100 #number up to 1654
 NUM_TRAIN_SUBJECTS = 8 #there is no reason to change this, ever
-COEFFICIENT_OF_AGGLOMERATION=250 #number up to sum(BAC+IAC+TAC)
+COEFFICIENT_OF_AGGLOMERATION=450 #number up to sum(BAC+IAC+TAC)
 BAC = 400
 IAC = 100
 TAC = 100
@@ -335,7 +331,6 @@ from sklearn.metrics import (
     precision_recall_fscore_support, confusion_matrix,
     classification_report, f1_score
 )
-import itertools
 import os
 
 # ---------- Helpers ----------
@@ -437,10 +432,10 @@ for i in range(len(classes)):
     # rp is increasing from 0->1, pp corresponding; safe to interpolate
     mean_precision_interp += np.interp(all_recall_points, rp[::-1], pp[::-1])
 mean_precision_interp /= len(classes)
-plt.plot(all_recall_points, mean_precision_interp, label=f"macro (mean AP={avg_prec_macro:.3f})")
+#plt.plot(all_recall_points, mean_precision_interp, label=f"macro (mean AP={avg_prec_macro:.3f})")
 plt.xlabel("Recall")
 plt.ylabel("Precision")
-plt.title("Macro & Micro Precision-Recall")
+plt.title("Micro Precision-Recall")
 plt.legend(loc="best")
 plt.grid(False)
 plt.tight_layout()

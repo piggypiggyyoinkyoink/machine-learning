@@ -17,6 +17,7 @@ from sklearn.metrics import accuracy_score, average_precision_score, classificat
 from sklearn.pipeline import Pipeline
 from sklearn.compose import ColumnTransformer
 from sklearn.linear_model import RidgeClassifier
+from classifier import LocalAccuracyVotingClassifier
 
 
 def fit_agg(X, ac=400):
@@ -263,9 +264,11 @@ def ensemble_train(models, X, y, scaler, agglomeration):
 
 
     #Fit ensemble model
-    m = VotingClassifier(
+    m = LocalAccuracyVotingClassifier(
     estimators=[('model'+str(i), models[i]) for i in range(len(models))],
-    voting='soft')
+    voting='soft',
+    k=7
+    )
 
     m.fit(X, y)
 
@@ -280,9 +283,9 @@ def ensemble_train(models, X, y, scaler, agglomeration):
 #Initialise variables
 subjects = [f"sub-{i:02d}" for i in range(1, 11)]
 TEST_INDEX = 0 #0-9 - which subject to use as test
-NUM_CLASSES = 150 #number up to 1654
+NUM_CLASSES = 100 #number up to 1654
 NUM_TRAIN_SUBJECTS = 8 #there is no reason to change this, ever
-COEFFICIENT_OF_AGGLOMERATION=250 #number up to sum(BAC+IAC+TAC)
+COEFFICIENT_OF_AGGLOMERATION=450 #number up to sum(BAC+IAC+TAC)
 BAC = 400
 IAC = 100
 TAC = 100
@@ -465,10 +468,10 @@ for i in range(len(classes)):
     # rp is increasing from 0->1, pp corresponding; safe to interpolate
     mean_precision_interp += np.interp(all_recall_points, rp[::-1], pp[::-1])
 mean_precision_interp /= len(classes)
-plt.plot(all_recall_points, mean_precision_interp, label=f"macro (mean AP={avg_prec_macro:.3f})")
+#plt.plot(all_recall_points, mean_precision_interp, label=f"macro (mean AP={avg_prec_macro:.3f})")
 plt.xlabel("Recall")
 plt.ylabel("Precision")
-plt.title("Macro & Micro Precision-Recall")
+plt.title("Micro Precision-Recall")
 plt.legend(loc="best")
 plt.grid(False)
 plt.tight_layout()
