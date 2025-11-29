@@ -1,5 +1,9 @@
 import numpy as np
-from sklearn.base import BaseEstimator, ClassifierMixin, clone
+from sklearn.base import BaseEstimator, ClassifierMixin
+from sklearn.utils.validation import validate_data, check_is_fitted
+from sklearn.utils.multiclass import unique_labels
+from sklearn.metrics import euclidean_distances
+from sklearn.base import clone
 from sklearn.neighbors import NearestNeighbors
 
 
@@ -18,63 +22,63 @@ class LocalAccuracyVotingClassifier(BaseEstimator, ClassifierMixin):
         Voting strategy.
     """
 
-    def __init__(self, estimators, k=15, voting="hard"):
+    def __init__(self, estimators, k=15, voting="soft"):
         self.estimators = estimators
         self.k = k
         self.voting = voting
 
-    # -------------------------
-    # Fit
-    # -------------------------
+    
     def fit(self, X, y):
         X = np.asarray(X)
         y = np.asarray(y)
 
-        # Store training data
+        # Check that X and y have correct shape, set n_features_in_, etc.
+        X, y = validate_data(self, X, y)
+        # Store the classes seen during fit
+        self.classes_ = unique_labels(y)
         self.X_ = X
         self.y_ = y
-
-        # Store class labels (IMPORTANT: for correct mapping)
-        self.classes_ = np.unique(y)
-
-        # Fit nearest neighbor model
+        #fit nearest neighbor model
         self.nn_ = NearestNeighbors(n_neighbors=self.k)
         self.nn_.fit(X)
 
-        # Fit all estimators
+        #fit all estimators
         self.estimators_ = []
         for name, est in self.estimators:
-            cloned = clone(est)
-            cloned.fit(X, y)
-            self.estimators_.append((name, cloned))
+        
+            self.estimators_.append((name, est))
 
         return self
 
-    # -------------------------
-    # Compute dynamic weights
-    # -------------------------
     def _local_weights(self, x):
-        """Compute per-estimator accuracy in local neighborhood of x."""
 
-        # Find k nearest neighbors
+        #find k nearest neighbors
         _, idx = self.nn_.kneighbors([x], return_distance=True)
         idx = idx[0]
+        #print(idx)
         y_local = self.y_[idx]
 
         weights = []
         for _, est in self.estimators_:
             pred_local = est.predict(self.X_[idx])
             acc = np.mean(pred_local == y_local)
-            acc = max(acc, 1e-6)      # avoid zero weight
+            #if acc != 1.0:
+                #print("ACC:", acc)
+            #set weight to very small value so it isnt 0.
+            acc = max(acc, 1e-6)
             weights.append(acc)
 
         weights = np.array(weights)
+        #print("WEIGHTS:", weights)
+        #print("RETURNED:", weights / weights.sum())
         return weights / weights.sum()
 
-    # -------------------------
-    # Predict (hard + soft)
-    # -------------------------
     def predict(self, X):
+        # Check if fit has been called
+        check_is_fitted(self)
+        # Input validation
+        X = validate_data(self, X, reset=False)
+
         X = np.asarray(X)
         preds = []
 
@@ -90,24 +94,21 @@ class LocalAccuracyVotingClassifier(BaseEstimator, ClassifierMixin):
                 preds.append(max(scores, key=scores.get))
 
             # Soft voting: weighted soft probabilities
-            elif self.voting == "soft":
+            else:
+                #get array of predictons from each estimator
                 probas = np.array([
                     est.predict_proba([x])[0]
                     for _, est in self.estimators_
                 ])
+                #weight the predictions according to nn performance
                 weighted = probas * w[:, None]
-                avg = weighted.sum(axis=0)
-                pred_class = self.classes_[np.argmax(avg)]
+                avg = weighted.sum(axis=0)#add up predicted probabilities for each class across the estimators
+                pred_class = self.classes_[np.argmax(avg)] #class with highest overall probability
                 preds.append(pred_class)
-
-            else:
-                raise ValueError("voting must be 'hard' or 'soft'")
 
         return np.array(preds)
 
-    # -------------------------
-    # predict_proba (soft only)
-    # -------------------------
+    
     def predict_proba(self, X):
         if self.voting != "soft":
             raise AttributeError("predict_proba only available when voting='soft'")

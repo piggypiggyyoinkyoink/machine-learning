@@ -1,27 +1,27 @@
 from sklearn.calibration import label_binarize
 from sklearn.linear_model import LogisticRegression
 from sklearn.preprocessing import StandardScaler
+import torch
 import os
 import scipy.io as sio
 from sklearn.model_selection import train_test_split
 import numpy as np
 from sklearn import preprocessing, svm, cluster
+from sklearn.preprocessing import PolynomialFeatures
+from sklearn import svm
+from sklearn.neighbors import KNeighborsClassifier
 from sklearn.ensemble import HistGradientBoostingClassifier, StackingClassifier, RandomForestClassifier, VotingClassifier
+from sklearn.decomposition import PCA
+from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
 from sklearn.metrics import accuracy_score, average_precision_score, classification_report, precision_recall_curve
-from classifier import LocalAccuracyVotingClassifier
+from sklearn.pipeline import Pipeline
+from sklearn.compose import ColumnTransformer
+from sklearn.linear_model import RidgeClassifier
+from classifier4 import ClassConditionalAccuracyVotingClassifier
+from classifier5 import SmoothedClassConditionalVotingClassifier
+from classifier3 import SmoothedClassConditionalVotingClassifier2
 
-
-def fit_agg(X, ac=400):
-        agg = cluster.FeatureAgglomeration(n_clusters=ac)
-        agg.fit_transform(X)
-        return agg
-    
-def transform_agg(X, agg):
-    X_transformed = agg.transform(X)
-    return X_transformed
-
-
-def load_data(nc=100, brain_ac = 400, image_ac=400, text_ac=400):
+def load_data(nc=100):
     #Data paths
     data_dir_root = os.path.join('./data', 'ThingsEEG-Text')
     image_model = 'pytorch/cornet_s'
@@ -33,10 +33,13 @@ def load_data(nc=100, brain_ac = 400, image_ac=400, text_ac=400):
     train_brain, train_image, train_text, train_label = [[] for i in range(10)], [[] for i in range(10)], [[] for i in range(10)], [[] for i in range(10)]
     valid_brain, valid_image, valid_text, valid_label = [[] for i in range(10)], [[] for i in range(10)], [[] for i in range(10)], [[] for i in range(10)]
     test_brain, test_image, test_text, test_label = [[] for i in range(10)], [[] for i in range(10)], [[] for i in range(10)], [[] for i in range(10)]
+    ens_val_brain, ens_val_image, ens_val_text, ens_val_label = [[] for i in range(10)], [[] for i in range(10)], [[] for i in range(10)], [[] for i in range(10)]
     NUM_CLASSES = nc
     SAMPLES_PER_CLASS = 10
-    TRAIN_PER_CLASS = 5
-    VALIDATION_PER_CLASS = 3
+    TRAIN_PER_CLASS = 4
+    VALIDATION_PER_CLASS = 2
+    ENSEMBLE_VAL_PER_CLASS = 2
+    TEST_PER_CLASS = 2
 
     num = 0 #Funky counter thingy for the for loop
     for sbj in subjects:
@@ -53,9 +56,9 @@ def load_data(nc=100, brain_ac = 400, image_ac=400, text_ac=400):
         text  = sio.loadmat(os.path.join(text_dir_seen, 'text_feat_train.mat'))['data'].astype('double') * 2.0
         label = sio.loadmat(os.path.join(brain_dir, 'eeg_train_data_within.mat'))['class_idx'].T.astype('int')
         #Idk what this does but it was in the colab code and i aint touching it
-        #brain = brain[:, :, 20:80]  # 70ms–400ms
+        brain = brain[:, :, 20:80]  # 70ms–400ms
         brain = np.reshape(brain, (brain.shape[0], -1))
-        #image = image[:, :100]
+        image = image[:, :100]
 
         #Only get the correct number of classes
         idx = np.squeeze(np.where(label < (NUM_CLASSES+1), True, False))
@@ -74,10 +77,10 @@ def load_data(nc=100, brain_ac = 400, image_ac=400, text_ac=400):
         for i in range(NUM_CLASSES):
             start = i * SAMPLES_PER_CLASS
             end = start + SAMPLES_PER_CLASS
-            test_brain[num].append(brain[start+TRAIN_PER_CLASS+VALIDATION_PER_CLASS:end])
-            test_image[num].append(image[start+TRAIN_PER_CLASS+VALIDATION_PER_CLASS:end])
-            test_text[num].append(text[start+TRAIN_PER_CLASS+VALIDATION_PER_CLASS:end])
-            test_label[num].append(label[start+TRAIN_PER_CLASS+VALIDATION_PER_CLASS:end])
+            test_brain[num].append(brain[start+TRAIN_PER_CLASS+VALIDATION_PER_CLASS+ENSEMBLE_VAL_PER_CLASS:end])
+            test_image[num].append(image[start+TRAIN_PER_CLASS+VALIDATION_PER_CLASS+ENSEMBLE_VAL_PER_CLASS:end])
+            test_text[num].append(text[start+TRAIN_PER_CLASS+VALIDATION_PER_CLASS+ENSEMBLE_VAL_PER_CLASS:end])
+            test_label[num].append(label[start+TRAIN_PER_CLASS+VALIDATION_PER_CLASS+ENSEMBLE_VAL_PER_CLASS:end])
 
         #VALIDATION DATA
         for i in range(NUM_CLASSES):
@@ -88,48 +91,33 @@ def load_data(nc=100, brain_ac = 400, image_ac=400, text_ac=400):
             valid_text[num].append(text[start+TRAIN_PER_CLASS:start+TRAIN_PER_CLASS+VALIDATION_PER_CLASS])
             valid_label[num].append(label[start+TRAIN_PER_CLASS:start+TRAIN_PER_CLASS+VALIDATION_PER_CLASS])
         
+        #ENSEMBLE VALIDATION DATA
+        for i in range(NUM_CLASSES):
+            start = i * SAMPLES_PER_CLASS
+            end = start + SAMPLES_PER_CLASS
+            ens_val_brain[num].append(brain[start+TRAIN_PER_CLASS+VALIDATION_PER_CLASS:start+TRAIN_PER_CLASS+VALIDATION_PER_CLASS+ENSEMBLE_VAL_PER_CLASS])
+            ens_val_image[num].append(image[start+TRAIN_PER_CLASS+VALIDATION_PER_CLASS:start+TRAIN_PER_CLASS+VALIDATION_PER_CLASS+ENSEMBLE_VAL_PER_CLASS])
+            ens_val_text[num].append(text[start+TRAIN_PER_CLASS+VALIDATION_PER_CLASS:start+TRAIN_PER_CLASS+VALIDATION_PER_CLASS+ENSEMBLE_VAL_PER_CLASS])
+            ens_val_label[num].append(label[start+TRAIN_PER_CLASS+VALIDATION_PER_CLASS:start+TRAIN_PER_CLASS+VALIDATION_PER_CLASS+ENSEMBLE_VAL_PER_CLASS])
         num+=1 #important
 
-    #Agglomerate brain data
-    full_train_brain = [None]*10
-    for i in range(10):
-        full_train_brain[i] = np.vstack(train_brain[i])
-    full_train_brain = np.vstack(full_train_brain)
-
-    agg_b = fit_agg(full_train_brain, ac=brain_ac)
-
-    full_train_image = [None]*10
-    for i in range(10):
-        full_train_image[i] = np.vstack(train_image[i])
-    full_train_image = np.vstack(full_train_image)
-
-    agg_i = fit_agg(full_train_image, ac=image_ac)
-
-    full_train_text = [None]*10
-    for i in range(10):
-        full_train_text[i] = np.vstack(train_text[i])
-    full_train_text = np.vstack(full_train_text)
-
-    agg_t = fit_agg(full_train_text, ac=text_ac)
-
-
+    
     #Initialise lists
     train_features = []
     valid_features = []
+    ens_val_features = []
     test_features = []
     train_labels = []
     valid_labels = []
+    ens_val_labels = []
     test_labels = []
 
     #Conglomerate brain/image/text features while maintaining subject separation
     for i in range(10):
         #Train data
         train_brain[i] = np.vstack(train_brain[i])
-        train_brain[i] = transform_agg(train_brain[i], agg_b)
         train_image[i] = np.vstack(train_image[i])
-        train_image[i] = transform_agg(train_image[i], agg_i)
         train_text[i] = np.vstack(train_text[i])
-        train_text[i] = transform_agg(train_text[i], agg_t)
         train_label[i] = np.vstack(train_label[i])
         #add to final lists
         train_features.append(np.hstack((train_brain[i], train_image[i], train_text[i])))
@@ -137,29 +125,31 @@ def load_data(nc=100, brain_ac = 400, image_ac=400, text_ac=400):
 
         #Validation data
         valid_brain[i] = np.vstack(valid_brain[i])
-        valid_brain[i] = transform_agg(valid_brain[i], agg_b)
         valid_image[i] = np.vstack(valid_image[i])
-        valid_image[i] = transform_agg(valid_image[i], agg_i)
         valid_text[i] = np.vstack(valid_text[i])
-        valid_text[i] = transform_agg(valid_text[i], agg_t)
         valid_label[i] = np.vstack(valid_label[i])
         #add to final lists
         valid_features.append(np.hstack((valid_brain[i], valid_image[i], valid_text[i])))
         valid_labels.append(valid_label[i].ravel())
 
+        #Ensemble validation data
+        ens_val_brain[i] = np.vstack(ens_val_brain[i])
+        ens_val_image[i] = np.vstack(ens_val_image[i])
+        ens_val_text[i] = np.vstack(ens_val_text[i])
+        ens_val_label[i] = np.vstack(ens_val_label[i])
+        #add to final lists
+        ens_val_features.append(np.hstack((ens_val_brain[i], ens_val_image[i], ens_val_text[i])))
+        ens_val_labels.append(ens_val_label[i].ravel())
         #Test data
         test_brain[i] = np.vstack(test_brain[i])
-        test_brain[i] = transform_agg(test_brain[i], agg_b)
         test_image[i] = np.vstack(test_image[i])
-        test_image[i] = transform_agg(test_image[i], agg_i)
         test_text[i] = np.vstack(test_text[i])
-        test_text[i] = transform_agg(test_text[i], agg_t)
         test_label[i] = np.vstack(test_label[i])
         #add to final lists
         test_features.append(np.hstack((test_brain[i], test_image[i], test_text[i])))
         test_labels.append(test_label[i].ravel())
     #Return
-    return train_features, train_labels, valid_features, valid_labels, test_features, test_labels
+    return train_features, train_labels, valid_features, valid_labels, test_features, test_labels, ens_val_features, ens_val_labels
 
 
 def fit_preprocessors(train_features, ac=445):
@@ -183,7 +173,7 @@ def preprocess_data(X, scaler, agglomeration=None):
 
 
 
-def train_model(X_train_arr, y_train_arr, num_subjects=8, scaler=None, agglomeration=None):
+def train_model(X_train_arr, y_train_arr, num_subjects=7, scaler=None, agglomeration=None):
     weights = []
     #Fit model to each subject individually
     for i in range(num_subjects):
@@ -249,17 +239,27 @@ def test_model(model, X_test, y_test, scaler=None, agglomeration=None):
 
 
 
-def ensemble_train(models, X, y, scaler, agglomeration):
+def ensemble_train(models, X, y, scaler, agglomeration,k=7):
     #Scale data
     X = preprocess_data(X, scaler=scaler, agglomeration=agglomeration)
 
 
     #Fit ensemble model
-    m = LocalAccuracyVotingClassifier(
+    #m = ClassConditionalAccuracyVotingClassifier(
+    # m = SmoothedClassConditionalVotingClassifier2(
+    # estimators=[('model'+str(i), models[i]) for i in range(len(models))],
+    # voting='soft',
+    #k=k
+    #)
+    m = SmoothedClassConditionalVotingClassifier(
     estimators=[('model'+str(i), models[i]) for i in range(len(models))],
-    voting='soft',
-    k=7
+    voting="soft",            # prefer soft voting
+    epsilon=1.0,              # smoothing (try 0.5..2.0)
+    weight_by_accuracy=True,  # multiply by global accuracy (helps)
+    calibrate=False,          # set True if you want to calibrate base models on DSEL
+    verbose=1
     )
+
 
     m.fit(X, y)
 
@@ -274,28 +274,32 @@ def ensemble_train(models, X, y, scaler, agglomeration):
 #Initialise variables
 subjects = [f"sub-{i:02d}" for i in range(1, 11)]
 TEST_INDEX = 0 #0-9 - which subject to use as test
+ENSEMBLE_VALIDATION_INDEX = 1
 NUM_CLASSES = 100 #number up to 1654
-NUM_TRAIN_SUBJECTS = 8 #there is no reason to change this, ever
+NUM_TRAIN_SUBJECTS = 7 #there is no reason to change this, ever
 COEFFICIENT_OF_AGGLOMERATION=450 #number up to sum(BAC+IAC+TAC)
-BAC = 400
-IAC = 100
-TAC = 100
+K = 200
 
 test_subj = subjects[TEST_INDEX]
+ensemble_validation_subject = subjects[ENSEMBLE_VALIDATION_INDEX]
 non_test_subjects = subjects[0:TEST_INDEX] + subjects[TEST_INDEX+1:]
+non_test_subjects.remove(subjects[ENSEMBLE_VALIDATION_INDEX])
 results = []
 models = []
 
 #Load data
-train_features, train_labels, valid_features, valid_labels, test_features, test_labels = load_data(nc=NUM_CLASSES, brain_ac=BAC, image_ac=IAC, text_ac=TAC)
+train_features, train_labels, valid_features, valid_labels, test_features, test_labels, ens_val_features, ens_val_labels = load_data(nc=NUM_CLASSES)
 X_test = test_features[TEST_INDEX]
 y_test = test_labels[TEST_INDEX]
+ens_X_train = ens_val_features[ENSEMBLE_VALIDATION_INDEX]
+ens_y_train = ens_val_labels[ENSEMBLE_VALIDATION_INDEX]
 scaler, agglomeration = fit_preprocessors(train_features, ac=COEFFICIENT_OF_AGGLOMERATION)
 for i in range(len(non_test_subjects)):
     #Organise data
     val_subj = non_test_subjects[i]
-    X_train_arr = [(train_features[j]) for j in range(10) if j != i and j != TEST_INDEX]
-    y_train_arr = [(train_labels[j]) for j in range(10) if j != i and j != TEST_INDEX]
+    train_subjects_index = [subjects.index(s) for s in non_test_subjects if s != val_subj]
+    X_train_arr = [(train_features[j]) for j in train_subjects_index]
+    y_train_arr = [(train_labels[j]) for j in train_subjects_index]
     X_val = valid_features[i]
     y_val = valid_labels[i]
 
@@ -318,12 +322,53 @@ print("AVERAGE ACCURACY:", np.mean(results))
 print("AVENGERS: ENSEMBLE")
 X_train = np.vstack(X_train_arr)
 y_train = np.hstack(y_train_arr)
-m = ensemble_train(models, X_train, y_train, scaler, agglomeration)
 
+print(f"K={K}")
+# Xp = preprocess_data(ens_X_train, scaler=scaler, agglomeration=agglomeration)
+# lav = LocalAccuracyVotingClassifier(estimators=[(f"m{i}", models[i]) for i in range(len(models))], voting='soft', k=K)
+# lav.fit(Xp, ens_y_train)   # ensure you call fit with the DSEL you intend
+
+# # compute weights for every DSEL sample
+# weights_arr = []
+# for x in Xp:
+#     w = lav._local_weights(x)   # if method is private, copy its logic here
+#     weights_arr.append(w)
+# weights_arr = np.array(weights_arr)  # shape (n_samples, n_models)
+# print("weights mean, std, min, max:", weights_arr.mean(), weights_arr.std(), weights_arr.min(), weights_arr.max())
+# # histogram of max weight per sample
+# import numpy as np
+# print("max weight stats per sample:", np.mean(weights_arr.max(axis=1)), np.median(weights_arr.max(axis=1)))
+
+# for i, m in enumerate(models):
+#     print(f"Model {i} accuracy on DSEL: {accuracy_score(ens_y_train , m.predict(Xp)):.4f}")
+
+# from sklearn.neighbors import NearestNeighbors
+# nn = NearestNeighbors(n_neighbors=K).fit(Xp)
+# _, idx = nn.kneighbors(Xp)
+# purities = []
+# for i, neigh in enumerate(idx):
+#     neigh_labels = ens_y_train[neigh]
+#     purity = (neigh_labels == ens_y_train[i]).mean()
+#     purities.append(purity)
+# print("purity mean, median:", np.mean(purities), np.median(purities))
+
+# correct_mat = np.vstack([ (m.predict(Xp) == ens_y_train) for m in models ])  # shape (M, n)
+# per_sample_correct_counts = correct_mat.sum(axis=0)
+# import numpy as np
+# print("per-sample correct counts: mean, median, min, max:", per_sample_correct_counts.mean(), np.median(per_sample_correct_counts), per_sample_correct_counts.min(), per_sample_correct_counts.max())
+
+# dists, _ = nn.kneighbors(Xp)
+# print("neighbor distance stats: mean, median, max:", dists.mean(), np.median(dists), dists.max())
+ens_X_train, ens_y_train = X_train, y_train
+
+m = ensemble_train(models, ens_X_train, ens_y_train, scaler, agglomeration, k = K)
+m2 = VotingClassifier(estimators=[('model'+str(i), models[i]) for i in range(len(models))], voting='soft')
+m2.fit(preprocess_data(ens_X_train, scaler=scaler, agglomeration=agglomeration), ens_y_train)
 #Test ensemble model
 esaccuracy = test_model(m, X_test, y_test, scaler=scaler, agglomeration=agglomeration)
+esaccuracy2 = test_model(m2, X_test, y_test, scaler=scaler, agglomeration=agglomeration)
 print("ENSEMBLE ACCURACY:", esaccuracy) 
-
+print("ENSEMBLE ACCURACY old:", esaccuracy2) 
 
 ## Accuracy stats (15/11/25)
 #1654 classes: 0.6744256348246674 with ensemble, 0.6367 without 
