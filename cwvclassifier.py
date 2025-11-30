@@ -8,10 +8,11 @@ from sklearn.metrics import f1_score, accuracy_score
 
 class ClassWeightedVotingClassifier(BaseEstimator, ClassifierMixin):
 
-    def __init__(self, estimators, alpha:float=1.0):
+    def __init__(self, estimators, alpha:float=1.0, weighted = True):
         self.estimators = estimators
         self._estimator_type = "classifier"
         self.alpha = alpha
+        self.weighted = weighted
 
         #set once fitted:
         self.classes = None
@@ -31,38 +32,42 @@ class ClassWeightedVotingClassifier(BaseEstimator, ClassifierMixin):
 
         #initialise arrays for estimators, weights and accuracies.
         weights = np.zeros((num_estimators, num_classes), dtype=float)
-        accs = np.zeros(num_estimators, dtype=float)
 
-        for j in range(len(self.estimators)):
-            est = self.estimators[j][1]
-            try:
-                probability_matrix = est.predict_proba(X)  #shape: (num_samples, num_classes)
-            except:
-                #no predict_proba method
-                raise Exception("Estimator does not have predict_proba method")
-            #get probability matrix of all classes for all samples for this estimator
+        if self.weighted:
+            accs = np.zeros(num_estimators, dtype=float)
 
-            #Get the predicted class for every sample for this estimator
-            #(this is the class with the highest probability for that sample in the probability matrix)
-            predicted_class_indexes = self.classes[np.argmax(probability_matrix, axis=1)]
+            for j in range(len(self.estimators)):
+                est = self.estimators[j][1]
+                try:
+                    probability_matrix = est.predict_proba(X)  #shape: (num_samples, num_classes)
+                except:
+                    #no predict_proba method
+                    raise Exception("Estimator does not have predict_proba method")
+                #get probability matrix of all classes for all samples for this estimator
 
-            #use f1 score for each class to compute weight for that class for this estimator.
-            for i in range(len(self.classes)):
-                f1 = f1_score(y == self.classes[i], predicted_class_indexes == self.classes[i])
-                smoothed = (f1 + self.alpha) / (1.0 + self.alpha)
-                weights[j, i] = smoothed
+                #Get the predicted class for every sample for this estimator
+                #(this is the class with the highest probability for that sample in the probability matrix)
+                y_pred = self.classes[np.argmax(probability_matrix, axis=1)]
 
-            #get overall accuracy score for each estimator against X and y
-            accs[j] = accuracy_score(y, predicted_class_indexes)
+                #use f1 score for each class to compute weight for that class for this estimator.
+                for i in range(len(self.classes)):
+                    f1 = f1_score(y == self.classes[i], y_pred == self.classes[i])
+                    smoothed = (f1 + self.alpha) / (1.0 + self.alpha)
+                    weights[j, i] = smoothed
 
-        #normalise accuracy scores to [0,1]
-        accs = (accs - accs.min()) / (accs.max() - accs.min() + 1e-12) #add small number so weights never zero
-        weights = weights * accs[:, None] #multiply weights by overall accuracy of the estimator
+                #get overall accuracy score for each estimator against X and y
+                accs[j] = accuracy_score(y, y_pred)
 
-        #normalise weights per estimator
-        row_sums = weights.sum(axis=1, keepdims=True) + 1e-12
-        weights = weights / row_sums
+            #normalise accuracy scores to [0,1]
+            accs = (accs - accs.min()) / (accs.max() - accs.min() + 1e-12) #add small number so weights never zero
+            weights = weights * accs[:, None] #multiply weights by overall accuracy of the estimator
 
+            #normalise weights per estimator
+            row_sums = weights.sum(axis=1, keepdims=True) + 1e-12
+            weights = weights / row_sums
+        else:
+            #if not weighted, all weights are 1
+            weights.fill(1.0)
         self.weights = weights #shape: (num_estimators, num_classes))
         return self
 
@@ -98,9 +103,9 @@ class ClassWeightedVotingClassifier(BaseEstimator, ClassifierMixin):
 
     def predict(self, X):
         #predict provbabilities of each class
-        proba = self.predict_proba(X)
+        probabilities = self.predict_proba(X)
         #return class of highest probability
-        idx = np.argmax(proba, axis=1)
+        idx = np.argmax(probabilities, axis=1)
         return self.classes[idx]
 
     

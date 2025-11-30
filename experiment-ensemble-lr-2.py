@@ -17,10 +17,7 @@ from sklearn.metrics import accuracy_score, average_precision_score, classificat
 from sklearn.pipeline import Pipeline
 from sklearn.compose import ColumnTransformer
 from sklearn.linear_model import RidgeClassifier
-from classifier4 import ClassConditionalAccuracyVotingClassifier
 from cwvclassifier import ClassWeightedVotingClassifier
-from classifier3 import SmoothedClassConditionalVotingClassifier2
-from classifier import LocalAccuracyVotingClassifier
 
 def load_data(nc=100):
     #Data paths

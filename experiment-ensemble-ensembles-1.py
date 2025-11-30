@@ -17,10 +17,7 @@ from sklearn.metrics import accuracy_score, average_precision_score, classificat
 from sklearn.pipeline import Pipeline
 from sklearn.compose import ColumnTransformer
 from sklearn.linear_model import RidgeClassifier
-from classifier4 import ClassConditionalAccuracyVotingClassifier
 from cwvclassifier import ClassWeightedVotingClassifier
-from classifier3 import SmoothedClassConditionalVotingClassifier2
-from classifier import LocalAccuracyVotingClassifier
 
 def load_data(nc=100):
     #Data paths
@@ -183,7 +180,8 @@ def finetune_model(models, X, y, scaler=None, agglomeration=None):
 
     m = ClassWeightedVotingClassifier(
     estimators=[('model'+str(i), models[i]) for i in range(len(models))],
-    alpha=1.0,              # smoothing (try 0.5..2.0)
+    alpha=1.0,              
+    weighted=True
     )
     m.fit(X, y)
     #Return fine-tuned model
@@ -210,7 +208,8 @@ def ensemble_train(models, X, y, scaler, agglomeration):
     #Fit ensemble model
     m = ClassWeightedVotingClassifier(
     estimators=[('model'+str(i), models[i]) for i in range(len(models))],
-    alpha=1.0,              # smoothing (try 0.5..2.0)
+    alpha=1.0,
+    weighted=False
     )
 
 
