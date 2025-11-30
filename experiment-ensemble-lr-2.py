@@ -18,7 +18,7 @@ from sklearn.pipeline import Pipeline
 from sklearn.compose import ColumnTransformer
 from sklearn.linear_model import RidgeClassifier
 from classifier4 import ClassConditionalAccuracyVotingClassifier
-from classifier5 import ClassWeightedVotingClassifier
+from cwvclassifier import ClassWeightedVotingClassifier
 from classifier3 import SmoothedClassConditionalVotingClassifier2
 from classifier import LocalAccuracyVotingClassifier
 
