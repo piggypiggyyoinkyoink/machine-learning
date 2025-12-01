@@ -209,7 +209,7 @@ def ensemble_train(models, X, y, scaler, agglomeration):
     m = ClassWeightedVotingClassifier(
     estimators=[('model'+str(i), models[i]) for i in range(len(models))],
     alpha=1.0,
-    weighted=False
+    weighted=True
     )
 
 
@@ -280,8 +280,8 @@ print("ENSEMBLE ACCURACY:", esaccuracy)
 #500 classes: 0.802 with ensemble, 0.753 without
 #100 classes: 0.915 with ensemble, 0.883 without
 
-
-
+#0.607 weighted = false
+#0.612 weighted = true
 
 
 

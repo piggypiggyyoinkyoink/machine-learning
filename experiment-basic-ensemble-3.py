@@ -206,7 +206,7 @@ def test_model(model, X_test, y_test, scaler=None, agglomeration=None):
 subjects = [f"sub-{i:02d}" for i in range(1, 11)]
 TEST_INDEX = 0 #0-9 - which subject to use as test
 VALIDATION_INDEX = 0 #0-8 - which subject to use for validation
-NUM_CLASSES = 100 #number up to 1654
+NUM_CLASSES = 1654 #number up to 1654
 NUM_TRAIN_SUBJECTS = 8 #there is no reason to change this, ever
 COEFFICIENT_OF_AGGLOMERATION=450 #number up to sum(BAC+IAC+TAC)
 
