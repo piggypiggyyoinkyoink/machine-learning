@@ -31,12 +31,12 @@ def load_data(nc=100):
     train_brain, train_image, train_text, train_label = [[] for i in range(10)], [[] for i in range(10)], [[] for i in range(10)], [[] for i in range(10)]
     valid_brain, valid_image, valid_text, valid_label = [[] for i in range(10)], [[] for i in range(10)], [[] for i in range(10)], [[] for i in range(10)]
     test_brain, test_image, test_text, test_label = [[] for i in range(10)], [[] for i in range(10)], [[] for i in range(10)], [[] for i in range(10)]
-    ens_val_brain, ens_val_image, ens_val_text, ens_val_label = [[] for i in range(10)], [[] for i in range(10)], [[] for i in range(10)], [[] for i in range(10)]
+    fine_tune_brain, fine_tune_image, fine_tune_text, fine_tune_label = [[] for i in range(10)], [[] for i in range(10)], [[] for i in range(10)], [[] for i in range(10)]
     NUM_CLASSES = nc
     SAMPLES_PER_CLASS = 10
     TRAIN_PER_CLASS = 4
     VALIDATION_PER_CLASS = 2
-    ENSEMBLE_VAL_PER_CLASS = 2
+    FINE_TUNE_PER_CLASS = 2
     TEST_PER_CLASS = 2
 
     num = 0 #Funky counter thingy for the for loop
@@ -75,10 +75,10 @@ def load_data(nc=100):
         for i in range(NUM_CLASSES):
             start = i * SAMPLES_PER_CLASS
             end = start + SAMPLES_PER_CLASS
-            test_brain[num].append(brain[start+TRAIN_PER_CLASS+VALIDATION_PER_CLASS+ENSEMBLE_VAL_PER_CLASS:end])
-            test_image[num].append(image[start+TRAIN_PER_CLASS+VALIDATION_PER_CLASS+ENSEMBLE_VAL_PER_CLASS:end])
-            test_text[num].append(text[start+TRAIN_PER_CLASS+VALIDATION_PER_CLASS+ENSEMBLE_VAL_PER_CLASS:end])
-            test_label[num].append(label[start+TRAIN_PER_CLASS+VALIDATION_PER_CLASS+ENSEMBLE_VAL_PER_CLASS:end])
+            test_brain[num].append(brain[start+TRAIN_PER_CLASS+VALIDATION_PER_CLASS+FINE_TUNE_PER_CLASS:end])
+            test_image[num].append(image[start+TRAIN_PER_CLASS+VALIDATION_PER_CLASS+FINE_TUNE_PER_CLASS:end])
+            test_text[num].append(text[start+TRAIN_PER_CLASS+VALIDATION_PER_CLASS+FINE_TUNE_PER_CLASS:end])
+            test_label[num].append(label[start+TRAIN_PER_CLASS+VALIDATION_PER_CLASS+FINE_TUNE_PER_CLASS:end])
 
         #VALIDATION DATA
         for i in range(NUM_CLASSES):
@@ -89,25 +89,25 @@ def load_data(nc=100):
             valid_text[num].append(text[start+TRAIN_PER_CLASS:start+TRAIN_PER_CLASS+VALIDATION_PER_CLASS])
             valid_label[num].append(label[start+TRAIN_PER_CLASS:start+TRAIN_PER_CLASS+VALIDATION_PER_CLASS])
         
-        #ENSEMBLE VALIDATION DATA
+        #FINE TUNING DATA
         for i in range(NUM_CLASSES):
             start = i * SAMPLES_PER_CLASS
             end = start + SAMPLES_PER_CLASS
-            ens_val_brain[num].append(brain[start+TRAIN_PER_CLASS+VALIDATION_PER_CLASS:start+TRAIN_PER_CLASS+VALIDATION_PER_CLASS+ENSEMBLE_VAL_PER_CLASS])
-            ens_val_image[num].append(image[start+TRAIN_PER_CLASS+VALIDATION_PER_CLASS:start+TRAIN_PER_CLASS+VALIDATION_PER_CLASS+ENSEMBLE_VAL_PER_CLASS])
-            ens_val_text[num].append(text[start+TRAIN_PER_CLASS+VALIDATION_PER_CLASS:start+TRAIN_PER_CLASS+VALIDATION_PER_CLASS+ENSEMBLE_VAL_PER_CLASS])
-            ens_val_label[num].append(label[start+TRAIN_PER_CLASS+VALIDATION_PER_CLASS:start+TRAIN_PER_CLASS+VALIDATION_PER_CLASS+ENSEMBLE_VAL_PER_CLASS])
+            fine_tune_brain[num].append(brain[start+TRAIN_PER_CLASS+VALIDATION_PER_CLASS:start+TRAIN_PER_CLASS+VALIDATION_PER_CLASS+FINE_TUNE_PER_CLASS])
+            fine_tune_image[num].append(image[start+TRAIN_PER_CLASS+VALIDATION_PER_CLASS:start+TRAIN_PER_CLASS+VALIDATION_PER_CLASS+FINE_TUNE_PER_CLASS])
+            fine_tune_text[num].append(text[start+TRAIN_PER_CLASS+VALIDATION_PER_CLASS:start+TRAIN_PER_CLASS+VALIDATION_PER_CLASS+FINE_TUNE_PER_CLASS])
+            fine_tune_label[num].append(label[start+TRAIN_PER_CLASS+VALIDATION_PER_CLASS:start+TRAIN_PER_CLASS+VALIDATION_PER_CLASS+FINE_TUNE_PER_CLASS])
         num+=1 #important
 
     
     #Initialise lists
     train_features = []
     valid_features = []
-    ens_val_features = []
+    fine_tune_features = []
     test_features = []
     train_labels = []
     valid_labels = []
-    ens_val_labels = []
+    fine_tune_labels = []
     test_labels = []
 
     #Conglomerate brain/image/text features while maintaining subject separation
@@ -130,14 +130,14 @@ def load_data(nc=100):
         valid_features.append(np.hstack((valid_brain[i], valid_image[i], valid_text[i])))
         valid_labels.append(valid_label[i].ravel())
 
-        #Ensemble validation data
-        ens_val_brain[i] = np.vstack(ens_val_brain[i])
-        ens_val_image[i] = np.vstack(ens_val_image[i])
-        ens_val_text[i] = np.vstack(ens_val_text[i])
-        ens_val_label[i] = np.vstack(ens_val_label[i])
+        #Fine tuning data
+        fine_tune_brain[i] = np.vstack(fine_tune_brain[i])
+        fine_tune_image[i] = np.vstack(fine_tune_image[i])
+        fine_tune_text[i] = np.vstack(fine_tune_text[i])
+        fine_tune_label[i] = np.vstack(fine_tune_label[i])
         #add to final lists
-        ens_val_features.append(np.hstack((ens_val_brain[i], ens_val_image[i], ens_val_text[i])))
-        ens_val_labels.append(ens_val_label[i].ravel())
+        fine_tune_features.append(np.hstack((fine_tune_brain[i], fine_tune_image[i], fine_tune_text[i])))
+        fine_tune_labels.append(fine_tune_label[i].ravel())
         #Test data
         test_brain[i] = np.vstack(test_brain[i])
         test_image[i] = np.vstack(test_image[i])
@@ -147,7 +147,7 @@ def load_data(nc=100):
         test_features.append(np.hstack((test_brain[i], test_image[i], test_text[i])))
         test_labels.append(test_label[i].ravel())
     #Return
-    return train_features, train_labels, valid_features, valid_labels, test_features, test_labels, ens_val_features, ens_val_labels
+    return train_features, train_labels, valid_features, valid_labels, test_features, test_labels, fine_tune_features, fine_tune_labels
 
 
 def fit_preprocessors(train_features, ac=445):
@@ -173,12 +173,13 @@ def preprocess_data(X, scaler, agglomeration=None):
 
 def train_model(X_train_arr, y_train_arr, num_subjects=7, scaler=None, agglomeration=None):
     clfs = []
+    weights = []
+
     #Fit model to each subject individually
     for i in range(num_subjects):
         #Get training data for the subject
         X, y = X_train_arr[i], y_train_arr[i]
-        #Scale data
-        #scaler = StandardScaler().fit(X)
+        #Preproccess data
         X = preprocess_data(X, scaler=scaler, agglomeration=agglomeration)
 
 
@@ -190,25 +191,42 @@ def train_model(X_train_arr, y_train_arr, num_subjects=7, scaler=None, agglomera
         )
         clf.fit(X, y)
         #Yoink weights
+        weights.append(clf.coef_)
         clfs.append(clf)
-
+    
     #Average weights across subjects
+    weights = np.stack(weights)  
+    mean = np.mean(weights, axis=0)
     #Return mean weight to be used for fine tuning
-    #Return the scaler and agglomeration to be used in validation and testing
-    return clfs
+    return mean, clfs
 
 
 
-def finetune_model(models, X, y, scaler=None, agglomeration=None):
+def finetune_model(train_mean, models, X, y, scaler=None, agglomeration=None):
     X = preprocess_data(X, scaler=scaler, agglomeration=agglomeration)
 
-    m = ClassWeightedVotingClassifier(
-    estimators=[('model'+str(i), models[i]) for i in range(len(models))],
-    alpha=1.0,              # smoothing (try 0.5..2.0)
+    # m = ClassWeightedVotingClassifier(
+    # estimators=[('model'+str(i), models[i]) for i in range(len(models))],
+    # alpha=1.0,              # smoothing (try 0.5..2.0)
+    # )
+    # m.fit(X, y)
+    clf = LogisticRegression(
+        penalty="l2",
+        C=1.5,
+        fit_intercept=False,
+        warm_start=True,
+        max_iter=200
     )
-    m.fit(X, y)
+    #Initialize weights from training
+    classes = np.unique(y).tolist()
+    classes = [c-1 for c in classes]  
+    clf.classes_ = classes
+    clf.coef_ = train_mean[classes].copy()
+    clf.intercept_ = np.zeros(len(classes))
+    #Fine-tune with fine tuning data
+    clf.fit(X, y)
     #Return fine-tuned model
-    return m
+    return clf
 
 
 
@@ -223,7 +241,7 @@ def test_model(model, X_test, y_test, scaler=None, agglomeration=None):
 
 
 
-def ensemble_train(models, X, y, scaler, agglomeration,k=7):
+def ensemble_train(models, X, y, scaler, agglomeration):
     #Scale data
     X = preprocess_data(X, scaler=scaler, agglomeration=agglomeration)
 
@@ -254,46 +272,43 @@ def ensemble_train(models, X, y, scaler, agglomeration,k=7):
 #Initialise variables
 subjects = [f"sub-{i:02d}" for i in range(1, 11)]
 TEST_INDEX = 0 #0-9 - which subject to use as test
-ENSEMBLE_VALIDATION_INDEX = 1
 NUM_CLASSES = 100 #number up to 1654
 NUM_TRAIN_SUBJECTS = 7 #there is no reason to change this, ever
 COEFFICIENT_OF_AGGLOMERATION=450 #number up to sum(BAC+IAC+TAC)
-K = 200
 
 test_subj = subjects[TEST_INDEX]
-ensemble_validation_subject = subjects[ENSEMBLE_VALIDATION_INDEX]
 non_test_subjects = subjects[0:TEST_INDEX] + subjects[TEST_INDEX+1:]
-non_test_subjects.remove(subjects[ENSEMBLE_VALIDATION_INDEX])
+#non_test_subjects.remove(subjects[ENSEMBLE_VALIDATION_INDEX])
 results = []
 models = []
 
 #Load data
-train_features, train_labels, valid_features, valid_labels, test_features, test_labels, ens_val_features, ens_val_labels = load_data(nc=NUM_CLASSES)
+train_features, train_labels, valid_features, valid_labels, test_features, test_labels, fine_tune_features, fine_tune_labels = load_data(nc=NUM_CLASSES)
 X_test = test_features[TEST_INDEX]
 y_test = test_labels[TEST_INDEX]
-ens_X_train = ens_val_features[ENSEMBLE_VALIDATION_INDEX]
-ens_y_train = ens_val_labels[ENSEMBLE_VALIDATION_INDEX]
+ens_X_train = valid_features[TEST_INDEX]
+ens_y_train = valid_labels[TEST_INDEX]
 scaler, agglomeration = fit_preprocessors(train_features, ac=COEFFICIENT_OF_AGGLOMERATION)
 for i in range(len(non_test_subjects)):
     #Organise data
-    val_subj = non_test_subjects[i]
-    train_subjects_index = [subjects.index(s) for s in non_test_subjects if s != val_subj]
+    cv_subj = non_test_subjects[i]
+    train_subjects_index = [subjects.index(s) for s in non_test_subjects if s != cv_subj]
     X_train_arr = [(train_features[j]) for j in train_subjects_index]
     y_train_arr = [(train_labels[j]) for j in train_subjects_index]
+    X_ft = fine_tune_features[i]
+    y_ft = fine_tune_labels[i]
     X_val = valid_features[i]
     y_val = valid_labels[i]
-
     #Training
-    modelsList = train_model(X_train_arr, y_train_arr, num_subjects=NUM_TRAIN_SUBJECTS, scaler=scaler, agglomeration=agglomeration)
+    train_mean, modelsList = train_model(X_train_arr, y_train_arr, num_subjects=NUM_TRAIN_SUBJECTS, scaler=scaler, agglomeration=agglomeration)
     
     #Fine tuning
-    model = finetune_model(modelsList, X_val, y_val, scaler=scaler, agglomeration=agglomeration)
-    print(model._estimator_type)
-    #Testing
-    acc = test_model(model, X_test, y_test, scaler=scaler, agglomeration=agglomeration)
+    model = finetune_model(train_mean, modelsList, X_ft, y_ft, scaler=scaler, agglomeration=agglomeration)
+    #Validating
+    acc = test_model(model, X_val, y_val, scaler=scaler, agglomeration=agglomeration)
     results.append(acc)
     models.append(model)
-    print(f"Accuracy using {val_subj} as validation subject: {acc:.3f}")
+    print(f"Accuracy using {cv_subj} as validation subject: {acc:.3f}")
 #Print average accuracy across all validation subjects    
 print("AVERAGE ACCURACY:", np.mean(results))
 
@@ -304,13 +319,7 @@ y_train = np.hstack(y_train_arr)
 
 #ens_X_train, ens_y_train = X_train, y_train
 
-m = ensemble_train(models, ens_X_train, ens_y_train, scaler, agglomeration, k = K)
-#print(ml)
-# print([type(model[1]) for model in ml])
-# for i, m in enumerate(models):
-#     print(i, type(m), getattr(m, "_estimator_type", None))
-#     for name, est in m.estimators:
-#         print("   inner:", name, type(est), getattr(est, "_estimator_type", None))
+m = ensemble_train(models, ens_X_train, ens_y_train, scaler, agglomeration)
 
 #Test ensemble model
 esaccuracy = test_model(m, X_test, y_test, scaler=scaler, agglomeration=agglomeration)

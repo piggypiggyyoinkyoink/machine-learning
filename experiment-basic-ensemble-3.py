@@ -32,12 +32,12 @@ def load_data(nc=100):
     #Initialise variables
     subjects = [f"sub-{i:02d}" for i in range(1, 11)]
     train_brain, train_image, train_text, train_label = [[] for i in range(10)], [[] for i in range(10)], [[] for i in range(10)], [[] for i in range(10)]
-    valid_brain, valid_image, valid_text, valid_label = [[] for i in range(10)], [[] for i in range(10)], [[] for i in range(10)], [[] for i in range(10)]
+    fine_tune_brain, fine_tune_image, fine_tune_text, fine_tune_label = [[] for i in range(10)], [[] for i in range(10)], [[] for i in range(10)], [[] for i in range(10)]
     test_brain, test_image, test_text, test_label = [[] for i in range(10)], [[] for i in range(10)], [[] for i in range(10)], [[] for i in range(10)]
     NUM_CLASSES = nc
     SAMPLES_PER_CLASS = 10
     TRAIN_PER_CLASS = 5
-    VALIDATION_PER_CLASS = 3
+    FINE_TUNE_PER_CLASS = 3
 
     num = 0 #Funky counter thingy for the for loop
     for sbj in subjects:
@@ -76,28 +76,28 @@ def load_data(nc=100):
         for i in range(NUM_CLASSES):
             start = i * SAMPLES_PER_CLASS
             end = start + SAMPLES_PER_CLASS
-            test_brain[num].append(brain[start+TRAIN_PER_CLASS+VALIDATION_PER_CLASS:end])
-            test_image[num].append(image[start+TRAIN_PER_CLASS+VALIDATION_PER_CLASS:end])
-            test_text[num].append(text[start+TRAIN_PER_CLASS+VALIDATION_PER_CLASS:end])
-            test_label[num].append(label[start+TRAIN_PER_CLASS+VALIDATION_PER_CLASS:end])
+            test_brain[num].append(brain[start+TRAIN_PER_CLASS+FINE_TUNE_PER_CLASS:end])
+            test_image[num].append(image[start+TRAIN_PER_CLASS+FINE_TUNE_PER_CLASS:end])
+            test_text[num].append(text[start+TRAIN_PER_CLASS+FINE_TUNE_PER_CLASS:end])
+            test_label[num].append(label[start+TRAIN_PER_CLASS+FINE_TUNE_PER_CLASS:end])
 
         #VALIDATION DATA
         for i in range(NUM_CLASSES):
             start = i * SAMPLES_PER_CLASS
             end = start + SAMPLES_PER_CLASS
-            valid_brain[num].append(brain[start+TRAIN_PER_CLASS:start+TRAIN_PER_CLASS+VALIDATION_PER_CLASS])
-            valid_image[num].append(image[start+TRAIN_PER_CLASS:start+TRAIN_PER_CLASS+VALIDATION_PER_CLASS])
-            valid_text[num].append(text[start+TRAIN_PER_CLASS:start+TRAIN_PER_CLASS+VALIDATION_PER_CLASS])
-            valid_label[num].append(label[start+TRAIN_PER_CLASS:start+TRAIN_PER_CLASS+VALIDATION_PER_CLASS])
+            fine_tune_brain[num].append(brain[start+TRAIN_PER_CLASS:start+TRAIN_PER_CLASS+FINE_TUNE_PER_CLASS])
+            fine_tune_image[num].append(image[start+TRAIN_PER_CLASS:start+TRAIN_PER_CLASS+FINE_TUNE_PER_CLASS])
+            fine_tune_text[num].append(text[start+TRAIN_PER_CLASS:start+TRAIN_PER_CLASS+FINE_TUNE_PER_CLASS])
+            fine_tune_label[num].append(label[start+TRAIN_PER_CLASS:start+TRAIN_PER_CLASS+FINE_TUNE_PER_CLASS])
         
         num+=1 #important
 
     #Initialise lists
     train_features = []
-    valid_features = []
+    fine_tune_features = []
     test_features = []
     train_labels = []
-    valid_labels = []
+    fine_tune_labels = []
     test_labels = []
 
     #Conglomerate brain/image/text features while maintaining subject separation
@@ -112,13 +112,13 @@ def load_data(nc=100):
         train_labels.append(train_label[i].ravel())
 
         #Validation data
-        valid_brain[i] = np.vstack(valid_brain[i])
-        valid_image[i] = np.vstack(valid_image[i])
-        valid_text[i] = np.vstack(valid_text[i])
-        valid_label[i] = np.vstack(valid_label[i])
+        fine_tune_brain[i] = np.vstack(fine_tune_brain[i])
+        fine_tune_image[i] = np.vstack(fine_tune_image[i])
+        fine_tune_text[i] = np.vstack(fine_tune_text[i])
+        fine_tune_label[i] = np.vstack(fine_tune_label[i])
         #add to final lists
-        valid_features.append(np.hstack((valid_brain[i], valid_image[i], valid_text[i])))
-        valid_labels.append(valid_label[i].ravel())
+        fine_tune_features.append(np.hstack((fine_tune_brain[i], fine_tune_image[i], fine_tune_text[i])))
+        fine_tune_labels.append(fine_tune_label[i].ravel())
 
         #Test data
         test_brain[i] = np.vstack(test_brain[i])
@@ -129,7 +129,7 @@ def load_data(nc=100):
         test_features.append(np.hstack((test_brain[i], test_image[i], test_text[i])))
         test_labels.append(test_label[i].ravel())
     #Return
-    return train_features, train_labels, valid_features, valid_labels, test_features, test_labels
+    return train_features, train_labels, fine_tune_features, fine_tune_labels, test_features, test_labels
 
 
 def fit_preprocessors(train_features, ac=445):
@@ -205,8 +205,7 @@ def test_model(model, X_test, y_test, scaler=None, agglomeration=None):
 #Initialise variables
 subjects = [f"sub-{i:02d}" for i in range(1, 11)]
 TEST_INDEX = 0 #0-9 - which subject to use as test
-VALIDATION_INDEX = 0 #0-8 - which subject to use for validation
-NUM_CLASSES = 1654 #number up to 1654
+NUM_CLASSES = 100 #number up to 1654
 NUM_TRAIN_SUBJECTS = 8 #there is no reason to change this, ever
 COEFFICIENT_OF_AGGLOMERATION=450 #number up to sum(BAC+IAC+TAC)
 
@@ -216,7 +215,7 @@ results = []
 models = []
 
 #Load data
-train_features, train_labels, valid_features, valid_labels, test_features, test_labels = load_data(nc=NUM_CLASSES)
+train_features, train_labels, fine_tune_features, fine_tune_labels, test_features, test_labels = load_data(nc=NUM_CLASSES)
 X_test = test_features[TEST_INDEX]
 y_test = test_labels[TEST_INDEX]
 
@@ -224,11 +223,10 @@ y_test = test_labels[TEST_INDEX]
 scaler, agglomeration = fit_preprocessors(train_features, ac=COEFFICIENT_OF_AGGLOMERATION)
 
 #Organise data
-val_subj = non_test_subjects[VALIDATION_INDEX]
-X_train_arr = [(train_features[j]) for j in range(10) if j != VALIDATION_INDEX and j != TEST_INDEX]
-y_train_arr = [(train_labels[j]) for j in range(10) if j != VALIDATION_INDEX and j != TEST_INDEX]
-X_val = valid_features[VALIDATION_INDEX]
-y_val = valid_labels[VALIDATION_INDEX]
+X_train_arr = [(train_features[j]) for j in range(10) if j != TEST_INDEX]
+y_train_arr = [(train_labels[j]) for j in range(10) if j != TEST_INDEX]
+X_val = fine_tune_features[TEST_INDEX]
+y_val = fine_tune_labels[TEST_INDEX]
 
 #Training
 modelsList = train_model(X_train_arr, y_train_arr, num_subjects=NUM_TRAIN_SUBJECTS, scaler=scaler, agglomeration=agglomeration)
@@ -240,7 +238,6 @@ acc = test_model(model, X_test, y_test, scaler=scaler, agglomeration=agglomerati
 results.append(acc)
 models.append(model)
 print(f"\nTest Subject: {test_subj}")
-print(f"Validation Subject: {val_subj}")
 print(f"Accuracy: {acc:.3f}")
 
 
@@ -353,7 +350,7 @@ flat_sorted = sorted(flat, key=lambda x: x[1], reverse=True)
 top_confused = flat_sorted[:K]
 
 # ---------- 5) Plots & outputs ----------
-out_dir = "visualisations_baseline"
+out_dir = "visualisations_experiment"
 ensure_dir(out_dir)
 
 # 5A: Macro PR curve (interpolated mean over classes) + micro PR
