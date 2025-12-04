@@ -55,7 +55,7 @@ def load_data(nc=100):
         brain = brain[:, :, 20:80]  # 70ms–400ms
         brain = np.reshape(brain, (brain.shape[0], -1))
         image = image[:, :100]
-
+        print(brain.shape, image.shape, text.shape, label.shape)
         #Only get the correct number of classes
         idx = np.squeeze(np.where(label < (NUM_CLASSES+1), True, False))
         brain, image, text, label = brain[idx, :], image[idx, :], text[idx, :], label[idx]
@@ -153,6 +153,8 @@ def preprocess_data(X, scaler, agglomeration=None):
 
 def train_model(X_train_arr, y_train_arr, num_subjects=7, scaler=None, agglomeration=None):
     clfs = []
+    weights = []
+
     #Fit model to each subject individually
     for i in range(num_subjects):
         #Get training data for the subject
@@ -169,13 +171,18 @@ def train_model(X_train_arr, y_train_arr, num_subjects=7, scaler=None, agglomera
         )
         clf.fit(X, y)
         #Yoink weights
+        weights.append(clf.coef_)
         clfs.append(clf)
+    
+    #Average weights across subjects
+    weights = np.stack(weights)  
+    mean = np.mean(weights, axis=0)
+    #Return mean weight to be used for fine tuning
+    return mean, clfs
 
-    return clfs
 
 
-
-def finetune_model(models, X, y, scaler=None, agglomeration=None):
+def finetune_model(train_mean, models, X, y, scaler=None, agglomeration=None):
     X = preprocess_data(X, scaler=scaler, agglomeration=agglomeration)
 
     m = ClassWeightedVotingClassifier(
@@ -184,8 +191,23 @@ def finetune_model(models, X, y, scaler=None, agglomeration=None):
     weighted=True
     )
     m.fit(X, y)
-    #Return fine-tuned model
-    return m
+    clf = LogisticRegression(
+        penalty="l2",
+        C=1.5,
+        fit_intercept=False,
+        warm_start=True,
+        max_iter=200
+    )
+    #Initialize weights from training
+    classes = np.unique(y).tolist()
+    classes = [c-1 for c in classes]  
+    clf.classes_ = classes
+    clf.coef_ = train_mean[classes].copy()
+    clf.intercept_ = np.zeros(len(classes))
+    #Fine-tune with validation data
+    clf.fit(X, y)
+    #Return fine-tuned models
+    return m, clf
 
 
 
@@ -209,9 +231,9 @@ def ensemble_train(models, X, y, scaler, agglomeration):
     m = ClassWeightedVotingClassifier(
     estimators=[('model'+str(i), models[i]) for i in range(len(models))],
     alpha=1.0,
-    weighted=True
+    weighted=False
     )
-
+    
 
     m.fit(X, y)
 
@@ -250,14 +272,15 @@ for i in range(len(non_test_subjects)):
     y_val = valid_labels[i]
 
     #Training
-    modelsList = train_model(X_train_arr, y_train_arr, num_subjects=NUM_TRAIN_SUBJECTS, scaler=scaler, agglomeration=agglomeration)
+    train_mean, modelsList = train_model(X_train_arr, y_train_arr, num_subjects=NUM_TRAIN_SUBJECTS, scaler=scaler, agglomeration=agglomeration)
     
     #Fine tuning
-    model = finetune_model(modelsList, X_val, y_val, scaler=scaler, agglomeration=agglomeration)
+    model, clf = finetune_model(train_mean, modelsList, X_val, y_val, scaler=scaler, agglomeration=agglomeration)
     #Testing
     acc = test_model(model, X_test, y_test, scaler=scaler, agglomeration=agglomeration)
     results.append(acc)
     models.append(model)
+    models.append(clf)
     print(f"Accuracy using {val_subj} as validation subject: {acc:.3f}")
 #Print average accuracy across all validation subjects    
 print("AVERAGE ACCURACY:", np.mean(results))
@@ -282,8 +305,8 @@ print("ENSEMBLE ACCURACY:", esaccuracy)
 
 #0.607 weighted = false
 #0.612 weighted = true
-
-
+#0.615 with LR and VC
+#0.658 with LR and VC, weighted false for ens
 
 
 

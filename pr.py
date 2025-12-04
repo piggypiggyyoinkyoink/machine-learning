@@ -79,30 +79,83 @@ def load_data(nc=100):
     stds = []
     lbls = []
     maxs = []
-    for i in range(NUM_CLASSES*SAMPLES_PER_CLASS):
-        arr = []
-        lbls.append(train_label[0][i][0])
-        for j in range(10):
-            #print(train_brain[j].shape)
-            #print(train_brain[j][i].shape)
-            arr.append(train_brain[j][i])
-        print(np.array(arr).shape)
-        std = np.std(np.array(arr), axis=0)
-        print(std.shape)
-        stds.append(np.mean(std))
-        maxs.append(np.max(std))
+    for l in range(NUM_CLASSES):
+        arr2 = []
+        max2 = []
+        lbls.append(train_label[0][10*l][0])
+        for k in range(SAMPLES_PER_CLASS):
+            i = 10*l + k
+            arr = []
+            for j in range(10):
+                #print(train_brain[j].shape)
+                #print(train_brain[j][i].shape)
+                arr.append(train_brain[j][i])
+            #print(np.array(arr).shape)
+            max2.extend(np.max(arr, axis=0))
+            std = np.std(np.array(arr), axis=0)
+            arr2.extend(std)
+            #print(std.shape)
+            #stds.append(np.mean(std))
+            #maxs.append(np.max(std))
+        #print(np.array(arr2).shape)
+        #print(np.array(max2).shape)
+        arr2 = np.array(arr2)
+        max2 = np.array(max2)
+        stds.append(np.mean(arr2))
+        maxs.append(np.max(max2))
     print(np.mean(stds))
     print(np.max(maxs))
     print(np.mean(maxs))
     print(np.array(stds).shape)
 
     print(np.array(lbls).shape)
+    print(lbls)
+    print(stds)
+    import matplotlib.pyplot as plt 
+    plt.title("Line graph") 
+    plt.xlabel("Class") 
+    plt.ylabel("Standard Deviation") 
+    plt.plot(lbls, stds, color ="red", label = "Average STD per class") 
+    plt.plot(lbls,maxs, color ="blue", label = "Max STD per class") 
+    plt.legend()
+    plt.show()
+    yax = ["01", "02", "03", "04", "05", "06", "07", "08", "09", "10"]
+    xax1 = []
+    xax2 = []
+    xax3 = []
+    for i in range(10):
+        arr3 = []
+        arr4 = []
+        arr5 = []
+        for j in range(NUM_CLASSES*SAMPLES_PER_CLASS):
+            arr3.append(np.mean(train_text[i][j]))
+            arr4.append(np.mean(train_image[i][j]))
+            arr5.append(np.mean(train_brain[i][j]))
+        print(f"Subject {i+1} mean: {np.mean(arr5)}, std: {np.std(arr5)}")
+        xax1.append(np.mean(arr5))
+        xax2.append(np.mean(arr4))
+        xax3.append(np.mean(arr3))
+    plt.bar(yax, xax1) 
+    plt.xlabel("Subject")
+    plt.ylabel("Mean EEG feature value ")
+    plt.title("Mean EEG per subject")
+    plt.show()
+    plt.bar(yax, xax2) 
+    plt.xlabel("Subject")
+    plt.ylabel("Mean Image feature value")
+    plt.title("Mean Image per subject")
+    plt.show()
+    plt.bar(yax, xax3) 
+    plt.xlabel("Subject")
+    plt.ylabel("Mean Text feature value")
+    plt.title("Mean Text per subject")
+    plt.show()
 #PROGRAM START
 
 #Initialise variables
 subjects = [f"sub-{i:02d}" for i in range(1, 11)]
 TEST_INDEX = 0 #0-9 - which subject to use as test
-NUM_CLASSES = 100 #number up to 1654
+NUM_CLASSES = 1654 #number up to 1654
 
 test_subj = subjects[TEST_INDEX]
 non_test_subjects = subjects[0:TEST_INDEX] + subjects[TEST_INDEX+1:]
