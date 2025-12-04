@@ -34,8 +34,8 @@ def load_data(nc=100):
     test_brain, test_image, test_text, test_label = [[] for i in range(10)], [[] for i in range(10)], [[] for i in range(10)], [[] for i in range(10)]
     NUM_CLASSES = nc
     SAMPLES_PER_CLASS = 10
-    TRAIN_PER_CLASS = 5
-    FINE_TUNE_PER_CLASS = 3
+    TRAIN_PER_CLASS = 6
+    FINE_TUNE_PER_CLASS = 2
 
     num = 0 #Funky counter thingy for the for loop
     for sbj in subjects:
@@ -243,7 +243,8 @@ y_train_arr = [(train_labels[j]) for j in range(10) if j != TEST_INDEX]
 # y_val = valid_labels[TEST_INDEX]
 X_ft = ft_features[TEST_INDEX]
 y_ft = ft_labels[TEST_INDEX]
-
+# X_ft = train_features[TEST_INDEX]
+# y_ft = train_labels[TEST_INDEX]
 #Fit preprocessors for future use
 scaler, agglomeration = fit_preprocessors(X_train_arr, ac=COEFFICIENT_OF_AGGLOMERATION)
 

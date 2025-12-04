@@ -36,8 +36,8 @@ def load_data(nc=100):
     test_brain, test_image, test_text, test_label = [[] for i in range(10)], [[] for i in range(10)], [[] for i in range(10)], [[] for i in range(10)]
     NUM_CLASSES = nc
     SAMPLES_PER_CLASS = 10
-    TRAIN_PER_CLASS = 5
-    FINE_TUNE_PER_CLASS = 3
+    TRAIN_PER_CLASS = 6
+    FINE_TUNE_PER_CLASS = 2
 
     num = 0 #Funky counter thingy for the for loop
     for sbj in subjects:
@@ -81,7 +81,7 @@ def load_data(nc=100):
             test_text[num].append(text[start+TRAIN_PER_CLASS+FINE_TUNE_PER_CLASS:end])
             test_label[num].append(label[start+TRAIN_PER_CLASS+FINE_TUNE_PER_CLASS:end])
 
-        #VALIDATION DATA
+        #FINE TUNING DATA
         for i in range(NUM_CLASSES):
             start = i * SAMPLES_PER_CLASS
             end = start + SAMPLES_PER_CLASS
@@ -152,13 +152,15 @@ def preprocess_data(X, scaler, agglomeration=None):
 
 
 
-def train_model(X_train_arr, y_train_arr, num_subjects=8, scaler=None, agglomeration=None):
+def train_model(X_train_arr, y_train_arr, num_subjects=7, scaler=None, agglomeration=None):
     clfs = []
+    weights = []
+
     #Fit model to each subject individually
     for i in range(num_subjects):
         #Get training data for the subject
         X, y = X_train_arr[i], y_train_arr[i]
-        #Scale data
+        #Preproccess data
         X = preprocess_data(X, scaler=scaler, agglomeration=agglomeration)
 
 
@@ -170,23 +172,49 @@ def train_model(X_train_arr, y_train_arr, num_subjects=8, scaler=None, agglomera
         )
         clf.fit(X, y)
         #Yoink weights
+        weights.append(clf.coef_)
         clfs.append(clf)
+    
+    #Average weights across subjects
+    weights = np.stack(weights)  
+    mean = np.mean(weights, axis=0)
+    #Return mean weight to be used for fine tuning
+    return mean, clfs
 
-    return clfs
 
 
 
-
-def finetune_model(models, X, y, scaler=None, agglomeration=None):
+def finetune_model(train_mean, models, X, y, scaler=None, agglomeration=None):
     X = preprocess_data(X, scaler=scaler, agglomeration=agglomeration)
-
+    clf = LogisticRegression(
+        penalty="l2",
+        C=1.5,
+        fit_intercept=False,
+        warm_start=True,
+        max_iter=200
+    )
+    #Initialize weights from training
+    classes = np.unique(y).tolist()
+    classes = [c-1 for c in classes]  
+    clf.classes_ = classes
+    clf.coef_ = train_mean[classes].copy()
+    clf.intercept_ = np.zeros(len(classes))
+    #Fine-tune with fine tuning data
+    clf.fit(X, y)
     m = ClassWeightedVotingClassifier(
     estimators=[('model'+str(i), models[i]) for i in range(len(models))],
     alpha=1.0,              # smoothing (try 0.5..2.0)
     )
     m.fit(X, y)
+    # basic voting classifier
+    m2 = ClassWeightedVotingClassifier(
+    estimators=[('finetuned', clf), ('ensemble', m)],
+    alpha=1.0,
+    weighted=False
+    )
+    m2.fit(X, y)
     #Return fine-tuned model
-    return m
+    return m2
 
 
 
@@ -206,7 +234,7 @@ def test_model(model, X_test, y_test, scaler=None, agglomeration=None):
 subjects = [f"sub-{i:02d}" for i in range(1, 11)]
 TEST_INDEX = 0 #0-9 - which subject to use as test
 NUM_CLASSES = 100 #number up to 1654
-NUM_TRAIN_SUBJECTS = 8 #there is no reason to change this, ever
+NUM_TRAIN_SUBJECTS = 9 #there is no reason to change this, ever
 COEFFICIENT_OF_AGGLOMERATION=450 #number up to sum(BAC+IAC+TAC)
 
 test_subj = subjects[TEST_INDEX]
@@ -225,15 +253,20 @@ scaler, agglomeration = fit_preprocessors(train_features, ac=COEFFICIENT_OF_AGGL
 #Organise data
 X_train_arr = [(train_features[j]) for j in range(10) if j != TEST_INDEX]
 y_train_arr = [(train_labels[j]) for j in range(10) if j != TEST_INDEX]
-X_val = fine_tune_features[TEST_INDEX]
-y_val = fine_tune_labels[TEST_INDEX]
+X_ft = fine_tune_features[TEST_INDEX]
+y_ft = fine_tune_labels[TEST_INDEX]
+# X_ft = train_features[TEST_INDEX]
+# y_ft = train_labels[TEST_INDEX]
 
 #Training
-modelsList = train_model(X_train_arr, y_train_arr, num_subjects=NUM_TRAIN_SUBJECTS, scaler=scaler, agglomeration=agglomeration)
+train_mean, modelsList = train_model(X_train_arr, y_train_arr, num_subjects=NUM_TRAIN_SUBJECTS, scaler=scaler, agglomeration=agglomeration)
     
 #Fine tuning
-model = finetune_model(modelsList, X_val, y_val, scaler=scaler, agglomeration=agglomeration)
+model = finetune_model(train_mean, modelsList, X_ft, y_ft, scaler=scaler, agglomeration=agglomeration)
 #Testing
+for i in range(10):
+    acc = test_model(model, test_features[i], test_labels[i], scaler=scaler, agglomeration=agglomeration)
+    print(f"Subject {subjects[i]} Accuracy: {acc:.3f}")
 acc = test_model(model, X_test, y_test, scaler=scaler, agglomeration=agglomeration)
 results.append(acc)
 models.append(model)
