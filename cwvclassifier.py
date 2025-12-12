@@ -51,8 +51,6 @@ class ClassWeightedVotingClassifier(BaseEstimator, ClassifierMixin):
 
                 #use f1 score for each class to compute weight for that class for this estimator.
                 for i in range(len(self.classes)):
-                    print(y == self.classes[i])
-                    print(y_pred == self.classes[i])
                     f1 = f1_score(y == self.classes[i], y_pred == self.classes[i])
                     smoothed = (f1 + self.alpha) / (1.0 + self.alpha)
                     weights[j, i] = smoothed
