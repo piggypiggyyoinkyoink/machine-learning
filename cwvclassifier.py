@@ -30,7 +30,7 @@ class ClassWeightedVotingClassifier(BaseEstimator, ClassifierMixin):
         num_classes = len(self.classes)
         num_estimators = len(self.estimators)
 
-        #initialise arrays for estimators, weights and accuracies.
+        #initialise array for weights 
         weights = np.zeros((num_estimators, num_classes), dtype=float)
 
         if self.weighted:
@@ -51,6 +51,8 @@ class ClassWeightedVotingClassifier(BaseEstimator, ClassifierMixin):
 
                 #use f1 score for each class to compute weight for that class for this estimator.
                 for i in range(len(self.classes)):
+                    print(y == self.classes[i])
+                    print(y_pred == self.classes[i])
                     f1 = f1_score(y == self.classes[i], y_pred == self.classes[i])
                     smoothed = (f1 + self.alpha) / (1.0 + self.alpha)
                     weights[j, i] = smoothed
@@ -63,7 +65,7 @@ class ClassWeightedVotingClassifier(BaseEstimator, ClassifierMixin):
             weights = weights * accs[:, None] #multiply weights by overall accuracy of the estimator
 
             #normalise weights per estimator
-            row_sums = weights.sum(axis=1, keepdims=True) + 1e-12
+            row_sums = weights.sum(axis=1, keepdims=True) + 1e-12 #to avoid division by zero
             weights = weights / row_sums
         else:
             #if not weighted, all weights are 1
@@ -79,8 +81,8 @@ class ClassWeightedVotingClassifier(BaseEstimator, ClassifierMixin):
         if self.weights is None:
             raise Exception("Model not fitted yet")
 
-        #initialise probability sum array
         X = np.array(X)
+        #initialise probability sum array
         prob_sum = np.zeros((X.shape[0], len(self.classes)), dtype=float)
 
         for j in range(len(self.estimators)):

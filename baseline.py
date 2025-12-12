@@ -218,11 +218,10 @@ def test_model(model, X_test, y_test, scaler=None, agglomeration=None):
 
 #Initialise variables
 subjects = [f"sub-{i:02d}" for i in range(1, 11)]
-TEST_INDEX = 8 #0-9 - which subject to use as test
-#VALIDATION_INDEX = 0 #0-8 - which subject to use for validation
+TEST_INDEX = 0 #0-9 - which subject to use as test
 NUM_CLASSES = 100 #number up to 1654
 NUM_TRAIN_SUBJECTS = 9 #there is no reason to change this, ever
-COEFFICIENT_OF_AGGLOMERATION=450 #number up to sum(BAC+IAC+TAC)
+COEFFICIENT_OF_AGGLOMERATION=450 #number up to 1632
 
 test_subj = subjects[TEST_INDEX]
 non_test_subjects = subjects[0:TEST_INDEX] + subjects[TEST_INDEX+1:]
@@ -234,17 +233,10 @@ y_test = test_labels[TEST_INDEX]
 
 
 #Organise data
-#val_subj = non_test_subjects[VALIDATION_INDEX]
-#X_train_arr = [(train_features[j]) for j in range(10) if j != VALIDATION_INDEX and j != TEST_INDEX]
 X_train_arr = [(train_features[j]) for j in range(10) if  j != TEST_INDEX]
-#y_train_arr = [(train_labels[j]) for j in range(10) if j != VALIDATION_INDEX and j != TEST_INDEX]
 y_train_arr = [(train_labels[j]) for j in range(10) if j != TEST_INDEX]
-# X_val = valid_features[TEST_INDEX]
-# y_val = valid_labels[TEST_INDEX]
 X_ft = ft_features[TEST_INDEX]
 y_ft = ft_labels[TEST_INDEX]
-# X_ft = train_features[TEST_INDEX]
-# y_ft = train_labels[TEST_INDEX]
 #Fit preprocessors for future use
 scaler, agglomeration = fit_preprocessors(X_train_arr, ac=COEFFICIENT_OF_AGGLOMERATION)
 
@@ -262,7 +254,6 @@ for i in range(10):
     print(f"Test Subject: {subjects[i]}, Accuracy: {acc:.3f}")
 acc = test_model(model, X_test, y_test, scaler=scaler, agglomeration=agglomeration)
 print(f"\nTest Subject: {test_subj}")
-#print(f"Validation Subject: {val_subj}")
 print(f"Accuracy: {acc:.3f}")
 
 
@@ -375,7 +366,7 @@ flat_sorted = sorted(flat, key=lambda x: x[1], reverse=True)
 top_confused = flat_sorted[:K]
 
 # ---------- 5) Plots & outputs ----------
-out_dir = "visualisations_baseline_actual"
+out_dir = "visualisations_baseline"
 ensure_dir(out_dir)
 
 # 5A: Macro PR curve (interpolated mean over classes) + micro PR
