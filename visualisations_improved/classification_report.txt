@@ -109,6 +109,5 @@ weighted avg      0.951     0.935     0.931       200
 
 Macro F1: 0.9310
 Micro F1: 0.9350
-Weighted F1: 0.9310
 Macro AP (mean AP): 0.9759
 Micro AP: 0.9710

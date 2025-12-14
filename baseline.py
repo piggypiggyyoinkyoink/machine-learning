@@ -13,7 +13,7 @@ from sklearn.neighbors import KNeighborsClassifier
 from sklearn.ensemble import HistGradientBoostingClassifier, StackingClassifier, RandomForestClassifier, VotingClassifier
 from sklearn.decomposition import PCA
 from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
-from sklearn.metrics import accuracy_score, precision_recall_curve, average_precision_score, precision_recall_fscore_support, confusion_matrix, classification_report, f1_score
+from sklearn.metrics import accuracy_score, precision_recall_curve, average_precision_score, precision_recall_fscore_support, confusion_matrix, classification_report, f1_score, precision_score, recall_score
 from sklearn.pipeline import Pipeline
 from sklearn.compose import ColumnTransformer
 from sklearn.linear_model import RidgeClassifier
@@ -133,6 +133,7 @@ def load_data(nc=100):
     return train_features, train_labels, fine_tune_features, fine_tune_labels, test_features, test_labels
 
 
+
 def fit_preprocessors(train_features, ac=445):
     # pool all subjects’ TRAIN data
     X = np.vstack(train_features)
@@ -155,6 +156,7 @@ def preprocess_data(X, scaler, agglomeration=None):
 
 def train_model(X_train_arr, y_train_arr, num_subjects=8, scaler=None, agglomeration=None):
     weights = []
+    clfs = []
     #Fit model to each subject individually
     for i in range(num_subjects):
         #Get training data for the subject
@@ -171,13 +173,13 @@ def train_model(X_train_arr, y_train_arr, num_subjects=8, scaler=None, agglomera
         clf.fit(X, y)
         #Yoink weights
         weights.append(clf.coef_)
+        clfs.append(clf)
 
     #Average weights across subjects
     weights = np.stack(weights)  
     mean = np.mean(weights, axis=0)
     #Return mean weight to be used for fine tuning
-    return mean
-
+    return mean, clfs
 
 
 
@@ -210,32 +212,19 @@ def visualise_shit(out_dir, X_test, y_test, model, scaler=None, agglomeration=No
     X_test = preprocess_data(X_test, scaler=scaler, agglomeration=agglomeration)
     # fix off-by-one error caused by class labels starting at 1
     classes = np.arange(1, NUM_CLASSES + 1)
-
-    # predicted probabilities (n_samples x n_classes)
+    # binarise labels for multiclass calculations (shape num_samples x num_classes)
+    y_test_bin = label_binarize(y_test, classes=classes)  
+    # predicted probabilities (shape: num_samples x num_classes)
     y_score = model.predict_proba(X_test)
-
-    # binarize true labels for multi-class PR calculations (shape n_samples x n_classes)
-    y_test_bin = label_binarize(y_test, classes=classes)  # classes must match label universe
-
-    # predicted labels (for confusion matrix & classification report)
+    # predicted labels 
     y_pred = model.predict(X_test)
 
-    # ---------- 1) Per-class Precision-Recall curves and AP ----------
-    # precision = dict()
-    # recall = dict()
-    # pr_thresholds = dict()
+    # Histogram of per-class average precision (AP)
     avg_prec = dict()
-
-    for i, cls in enumerate(classes):
-        # precision[i], recall[i], pr_thresholds[i] = precision_recall_curve(y_test_bin[:, i], y_score[:, i])
+    for i in range(len(classes)):
         avg_prec[i] = average_precision_score(y_test_bin[:, i], y_score[:, i])
-
-    # Macro-average AP (mean of class APs)
-    mean_precision = np.mean(list(avg_prec.values()))
-
-    # Histogram of per-clas average precision (AP)
     ap_table = [(int(classes[i]), float(avg_prec[i])) for i in range(len(classes))]
-    ap_table = sorted(ap_table, key=lambda x: x[1], reverse=True)  # high->low
+    ap_table = sorted(ap_table, key=lambda x: x[1], reverse=True)  # sort from high to low
     # plot histogram
     plt.figure(figsize=(8,4))
     aps = [v for _,v in ap_table]
@@ -244,13 +233,18 @@ def visualise_shit(out_dir, X_test, y_test, model, scaler=None, agglomeration=No
     plt.ylabel("Average Precision (AP)")
     plt.title("Per-class Average Precision (sorted)")
     plt.tight_layout()
-    plt.savefig(os.path.join(out_dir, "ap_histogram.png"), dpi=200)
+    plt.savefig(os.path.join(out_dir, "histogram.png"), dpi=200)
     plt.close()
 
     # PR curve
     # concat all classes into one binary decision (micro-average)
-    precision, recall, _ = precision_recall_curve(y_test_bin.ravel(), y_score.ravel())
-    avg_precision = average_precision_score(y_test_bin, y_score, average="micro")
+    precision, recall, _ = precision_recall_curve(y_test_bin.ravel(), y_score.ravel(), drop_intermediate=True)
+    # remove weird points from the curve casued by 0/0 = 1 in sklearn
+    a = [(precision[i], recall[i]) for i in range(len(precision))]
+    b = [(e[0], e[1]) for e in a if not ((e[1]==0.0 or (e[0] < 0.7 and e[1] < 0.02)) and e[0] !=1.0)]
+    precision = [e[0] for e in b]
+    recall = [e[1] for e in b]
+    # plot PR curve
     plt.figure(figsize=(6,5))
     plt.plot(recall, precision)
     plt.xlabel("Recall")
@@ -258,19 +252,13 @@ def visualise_shit(out_dir, X_test, y_test, model, scaler=None, agglomeration=No
     plt.title("Precision-Recall")
     plt.grid(False)
     plt.tight_layout()
-    plt.savefig(os.path.join(out_dir, "pr_macro_micro.png"), dpi=200)
+    plt.savefig(os.path.join(out_dir, "pr_curve.png"), dpi=200)
     plt.close()
-
-
-    # ---------- 3) F1 / precision / recall per class and macro/micro/weighted ----------
-    #prec_per_class, rec_per_class, f1_per_class, _ = precision_recall_fscore_support(y_test, y_pred, labels=classes, zero_division=0)
-    f1_macro = f1_score(y_test, y_pred, average='macro')
-    f1_micro = f1_score(y_test, y_pred, average='micro')
-    f1_weighted = f1_score(y_test, y_pred, average='weighted')
 
     # Confusion matrix 
     cm = confusion_matrix(y_test, y_pred, labels=classes)  # shape (C, C)
-    cm_norm = cm.astype('float') / (cm.sum(axis=1, keepdims=True) + 1e-12)  # per-row normalization
+    cm_norm = cm.astype('float') / (cm.sum(axis=1, keepdims=True) + 1e-12)  # normalise each row
+    # plot
     plt.figure(figsize=(8,6))
     plt.imshow(cm_norm, aspect='auto', interpolation='nearest')
     plt.colorbar(label='Proportion')
@@ -278,12 +266,11 @@ def visualise_shit(out_dir, X_test, y_test, model, scaler=None, agglomeration=No
     plt.ylabel('True class index (1..C)')
     plt.title('Normalised Confusion Matrix')
     plt.tight_layout()
-    plt.savefig(os.path.join(out_dir, "confusion_matrix_norm.png"), dpi=200)
+    plt.savefig(os.path.join(out_dir, "confusion_matrix.png"), dpi=200)
     plt.close()
 
 
     # Extract top confused pairs from confusion matrix
-    K = 20  # K=number of pairs to display
     cm_offdiag = cm.copy()
     np.fill_diagonal(cm_offdiag, 0)
     flat = []
@@ -292,8 +279,8 @@ def visualise_shit(out_dir, X_test, y_test, model, scaler=None, agglomeration=No
             if cm_offdiag[i,j] > 0:
                 flat.append(((int(classes[i]), int(classes[j])), int(cm_offdiag[i,j])))
     flat_sorted = sorted(flat, key=lambda x: x[1], reverse=True)
-    top_confused = flat_sorted[:K]
-    #write to text file
+    top_confused = flat_sorted
+    # write to text file
     with open(os.path.join(out_dir, "top_confused_pairs.txt"), "w") as f:
         f.write("Top confused class pairs (true -> pred) with counts:\n")
         for (t,p),count in top_confused:
@@ -301,12 +288,17 @@ def visualise_shit(out_dir, X_test, y_test, model, scaler=None, agglomeration=No
 
 
     # Overall classification report summary
+    f1_macro = f1_score(y_test, y_pred, average='macro')
+    f1_micro = f1_score(y_test, y_pred, average='micro')
+    avg_precision = average_precision_score(y_test_bin, y_score, average="micro")
+    mean_precision = average_precision_score(y_test_bin, y_score, average="macro")
+
     report = classification_report(y_test, y_pred, labels=classes, digits=3, zero_division=0)
+    # write to text file
     with open(os.path.join(out_dir, "classification_report.txt"), "w") as f:
         f.write("Classification report (per-class precision/recall/f1/ support):\n")
         f.write(report)
-        f.write("\n\n")
-        f.write(f"Macro F1: {f1_macro:.4f}\nMicro F1: {f1_micro:.4f}\nWeighted F1: {f1_weighted:.4f}\n")
+        f.write(f"\n\nMacro F1: {f1_macro:.4f}\nMicro F1: {f1_micro:.4f}\n")
         f.write(f"Macro AP (mean AP): {mean_precision:.4f}\nMicro AP: {avg_precision:.4f}\n")
 
 
@@ -316,7 +308,21 @@ def test_model(model, X_test, y_test, scaler=None, agglomeration=None):
     X_test = preprocess_data(X_test, scaler=scaler, agglomeration=agglomeration)
     #Evaluation
     y_pred = model.predict(X_test)
-    return accuracy_score(y_test, y_pred)
+    acc = accuracy_score(y_test, y_pred)
+    print(f"Test Accuracy: {acc:.3f}")
+    f1macro = f1_score(y_test, y_pred, average='macro',zero_division=0)
+    print(f"Test F1 (macro): {f1macro:.3f}")
+    f1micro = f1_score(y_test, y_pred, average='micro',zero_division=0)
+    print(f"Test F1 (micro): {f1micro:.3f}")
+    precmacro = precision_score(y_test, y_pred, average='macro',zero_division=0)
+    print(f"Test Precision (macro): {precmacro:.3f}")
+    recmacro = recall_score(y_test, y_pred, average='macro',zero_division=0)
+    print(f"Test Recall (macro): {recmacro:.3f}")
+    precmicro = precision_score(y_test, y_pred, average='micro',zero_division=0)
+    print(f"Test Precision (micro): {precmicro:.3f}")
+    recmicro = recall_score(y_test, y_pred, average='micro',zero_division=0)
+    print(f"Test Recall (micro): {recmicro:.3f}")
+    return
 
 
 
@@ -348,15 +354,41 @@ y_ft = ft_labels[TEST_INDEX]
 scaler, agglomeration = fit_preprocessors(X_train_arr, ac=COEFFICIENT_OF_AGGLOMERATION)
 
 #Training
-mean = train_model(X_train_arr, y_train_arr, num_subjects=NUM_TRAIN_SUBJECTS, scaler=scaler, agglomeration=agglomeration)
+mean, clfs = train_model(X_train_arr, y_train_arr, num_subjects=NUM_TRAIN_SUBJECTS, scaler=scaler, agglomeration=agglomeration)
 
 #Fine tuning
 model = finetune_model(mean, X_ft, y_ft, scaler=scaler, agglomeration=agglomeration)
 
 #Testing
-acc = test_model(model, X_test, y_test, scaler=scaler, agglomeration=agglomeration)
+test_model(model, X_test, y_test, scaler=scaler, agglomeration=agglomeration)
 #Visualisations
 visualise_shit("visualisations_baseline", X_test, y_test, model, scaler=scaler, agglomeration=agglomeration)
 print(f"\nTest Subject: {test_subj}")
-print(f"Accuracy: {acc:.3f}")
 
+accs =[]; aps = []; aps2=[]; precs = []; precs2=[]; recs = []; recs2=[]; f1s = []; f1s2 = []
+X_test = preprocess_data(X_test, scaler=scaler, agglomeration=agglomeration)
+classes = np.arange(1, NUM_CLASSES + 1)
+y_test_bin = label_binarize(y_test, classes=classes) 
+
+for clf in clfs:
+    y_pred = clf.predict(X_test)
+    y_score = clf.predict_proba(X_test)
+    accs.append(accuracy_score(y_test, y_pred))
+    aps.append(average_precision_score(y_test_bin, y_score, average='macro'))
+    aps2.append(average_precision_score(y_test_bin, y_score, average='micro'))
+    precs.append(precision_score(y_test, y_pred, average='macro', zero_division=0))
+    recs.append(recall_score(y_test, y_pred, average='macro',zero_division=0))
+    precs2.append(precision_score(y_test, y_pred, average='micro',zero_division=0))
+    recs2.append(recall_score(y_test, y_pred, average='micro',zero_division=0))
+    f1s.append(f1_score(y_test, y_pred, average='macro',zero_division=0))
+    f1s2.append(f1_score(y_test, y_pred, average='micro',zero_division=0))
+print("averages across sub-models M_i")
+print("Average accuracy:", np.mean(np.array(accs)))
+print("Average precision (macro):", np.mean(np.array(aps)))
+print("Average precision (micro):", np.mean(np.array(aps2)))
+print("Average precision (macro):", np.mean(np.array(precs)))
+print("Average recall (macro):", np.mean(np.array(recs)))
+print("Average precision (micro):", np.mean(np.array(precs2)))
+print("Average recall (micro):", np.mean(np.array(recs2)))
+print("Average F1 (macro):", np.mean(np.array(f1s)))
+print("Average F1 (micro):", np.mean(np.array(f1s2)))
