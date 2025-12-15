@@ -37,7 +37,7 @@ def load_data(nc=100):
     VALIDATION_PER_CLASS = 3
     TEST_PER_CLASS = 2
 
-    num = 0 #Funky counter thingy for the for loop
+    num = 0 
     for sbj in subjects:
         #Load data
         print(F"Loading {sbj}")
@@ -51,7 +51,6 @@ def load_data(nc=100):
         image = sio.loadmat(os.path.join(image_dir_seen, 'feat_pca_train.mat'))['data'].astype('double') * 50.0
         text  = sio.loadmat(os.path.join(text_dir_seen, 'text_feat_train.mat'))['data'].astype('double') * 2.0
         label = sio.loadmat(os.path.join(brain_dir, 'eeg_train_data_within.mat'))['class_idx'].T.astype('int')
-        #Idk what this does but it was in the colab code and i aint touching it
         brain = brain[:, :, 20:80]  # 70ms–400ms
         brain = np.reshape(brain, (brain.shape[0], -1))
         image = image[:, :100]
@@ -130,7 +129,7 @@ def load_data(nc=100):
 
 
 def fit_preprocessors(train_features, ac=445):
-    # pool all subjects’ TRAIN data
+    # Fit preprocessors on training data
     X = np.vstack(train_features)
 
     scaler = StandardScaler().fit(X)
@@ -167,7 +166,6 @@ def train_model(X_train_arr, y_train_arr, num_subjects=7, scaler=None, agglomera
         max_iter=200
         )
         clf.fit(X, y)
-        #Yoink weights
         clfs.append(clf)
     
     return clfs
@@ -240,9 +238,7 @@ for ALPHA in [0, 2.25, 2.75, 2.3, 2.6, 2.8]:
         acc = test_model(model, X_val, y_val, scaler=scaler, agglomeration=agglomeration)
         results.append(acc)
         models.append(model)
-        #print(F"Accuracy using {val_subj} as validation subject: {acc:.3f}")
-    #Print average accuracy across all validation subjects    
-    #print("F =", F)
+    print("F =", F)
     print("ALPHA =", ALPHA)
     print("AVERAGE ACCURACY:", np.mean(results))
 

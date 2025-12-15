@@ -55,7 +55,7 @@ def load_data(nc=100):
         image = sio.loadmat(os.path.join(image_dir_seen, 'feat_pca_train.mat'))['data'].astype('double') * 50.0
         text  = sio.loadmat(os.path.join(text_dir_seen, 'text_feat_train.mat'))['data'].astype('double') * 2.0
         label = sio.loadmat(os.path.join(brain_dir, 'eeg_train_data_within.mat'))['class_idx'].T.astype('int')
-        #Idk what this does but it was in the colab code and i aint touching it
+
         brain = brain[:, :, 20:80]  # 70ms–400ms
         image = image[:, :100]
         brain = np.reshape(brain, (brain.shape[0], -1))
@@ -136,36 +136,32 @@ def load_data(nc=100):
 
 
 def fit_preprocessors(train_features, f=445):
-    # pool all subjects’ TRAIN data
+    # pool training data
     X = np.vstack(train_features)
-
+    #fit scaler and agglomeration
     scaler = StandardScaler().fit(X)
     X = scaler.transform(X)
-
     agglomeration = cluster.FeatureAgglomeration(n_clusters=f).fit(X)
     return scaler, agglomeration
 
 
 
 def preprocess_data(X, scaler, agglomeration=None):
+    #apply preprocessors
     X = scaler.transform(X)
-    if agglomeration is not None:
-        X = agglomeration.transform(X)
+    X = agglomeration.transform(X)
     return X
 
 
 
 def train_model(X_train_arr, y_train_arr, num_subjects=7, scaler=None, agglomeration=None):
     clfs = []
-
-    #Fit model to each subject individually
+    #Train LR model M_i on each training subject i
     for i in range(num_subjects):
         #Get training data for the subject
         X, y = X_train_arr[i], y_train_arr[i]
         #Preproccess data
         X = preprocess_data(X, scaler=scaler, agglomeration=agglomeration)
-
-
         #Fit model
         clf = LogisticRegression(
         penalty="l2",
@@ -175,25 +171,25 @@ def train_model(X_train_arr, y_train_arr, num_subjects=7, scaler=None, agglomera
         clf.fit(X, y)
         #Yoink weights
         clfs.append(clf)
-    
     return clfs
 
 
 
-
-def finetune_model(models, X, y, scaler=None, agglomeration=None):
+def finetune_model(models, X, y, scaler=None, agglomeration=None, alpha=1.0):
+    #Preproccess data
     X = preprocess_data(X, scaler=scaler, agglomeration=agglomeration)
+    #Fit classifier - tune all the weights
     m = ClassWeightedVotingClassifier(
     estimators=[('model'+str(i), models[i]) for i in range(len(models))],
-    alpha=1.0,              
+    alpha=alpha,              
     )
     m.fit(X, y)
-    #Return fine-tuned ensemble model
+    #Return fine-tuned CWVC
     return m
 
 
 
-def visualise_shit(out_dir, X_test, y_test, model, scaler=None, agglomeration=None):
+def visualisations(out_dir, X_test, y_test, model, scaler=None, agglomeration=None):
     X_test = preprocess_data(X_test, scaler=scaler, agglomeration=agglomeration)
     # fix off-by-one error caused by class labels starting at 1
     classes = np.arange(1, NUM_CLASSES + 1)
@@ -222,9 +218,9 @@ def visualise_shit(out_dir, X_test, y_test, model, scaler=None, agglomeration=No
     plt.close()
 
     # PR curve
-    # concat all classes into one binary decision (micro-average)
+    # concat. all classes into one binary decision (micro-average)
     precision, recall, _ = precision_recall_curve(y_test_bin.ravel(), y_score.ravel(), drop_intermediate=True)
-    # remove weird points from the curve casued by 0/0 = 1 in sklearn
+    # remove anomalous points from the curve casued by 0/0 = 1 in sklearn 
     a = [(precision[i], recall[i]) for i in range(len(precision))]
     b = [(e[0], e[1]) for e in a if not ((e[1]==0.0 or (e[0] < 0.7 and e[1] < 0.02)) and e[0] !=1.0)]
     precision = [e[0] for e in b]
@@ -255,60 +251,56 @@ def visualise_shit(out_dir, X_test, y_test, model, scaler=None, agglomeration=No
     plt.close()
 
 
-    # Extract top confused pairs from confusion matrix
-    cm_offdiag = cm.copy()
-    np.fill_diagonal(cm_offdiag, 0)
+    #Extract all confused pairs (inaccurate predicitoons) from confusion matrix
+    cm_copy = cm.copy()
+    np.fill_diagonal(cm_copy, 0)
     flat = []
-    for i in range(cm_offdiag.shape[0]):
-        for j in range(cm_offdiag.shape[1]):
-            if cm_offdiag[i,j] > 0:
-                flat.append(((int(classes[i]), int(classes[j])), int(cm_offdiag[i,j])))
+    for i in range(cm_copy.shape[0]):
+        for j in range(cm_copy.shape[1]):
+            if cm_copy[i,j] > 0:
+                flat.append(((int(classes[i]), int(classes[j])), int(cm_copy[i,j])))
     flat_sorted = sorted(flat, key=lambda x: x[1], reverse=True)
     top_confused = flat_sorted
     # write to text file
-    with open(os.path.join(out_dir, "top_confused_pairs.txt"), "w") as f:
-        f.write("Top confused class pairs (true -> pred) with counts:\n")
+    with open(os.path.join(out_dir, "confused_pairs.txt"), "w") as f:
         for (t,p),count in top_confused:
             f.write(f"{t} -> {p} : {count}\n")
 
 
-    # Overall classification report summary
+    #Overall classification report summary
     f1_macro = f1_score(y_test, y_pred, average='macro')
     f1_micro = f1_score(y_test, y_pred, average='micro')
-    avg_precision = average_precision_score(y_test_bin, y_score, average="micro")
-    mean_precision = average_precision_score(y_test_bin, y_score, average="macro")
+    micro_precision = average_precision_score(y_test_bin, y_score, average="micro")
+    macro_precision = average_precision_score(y_test_bin, y_score, average="macro")
 
     report = classification_report(y_test, y_pred, labels=classes, digits=3, zero_division=0)
     # write to text file
     with open(os.path.join(out_dir, "classification_report.txt"), "w") as f:
-        f.write("Classification report (per-class precision/recall/f1/ support):\n")
         f.write(report)
-        f.write("\n\n")
-        f.write(f"Macro F1: {f1_macro:.4f}\nMicro F1: {f1_micro:.4f}\n")
-        f.write(f"Macro AP (mean AP): {mean_precision:.4f}\nMicro AP: {avg_precision:.4f}\n")
-
+        f.write(f"\n\nMacro F1: {f1_macro:.4f}\nMicro F1: {f1_micro:.4f}\n")
+        f.write(f"Macro AP (mean AP): {macro_precision:.4f}\nMicro AP: {micro_precision:.4f}\n")
 
 
 
 def test_model(model, X_test, y_test, scaler=None, agglomeration=None):
-    #Normalise and Agglomerate
+    #Preprocess data
     X_test = preprocess_data(X_test, scaler=scaler, agglomeration=agglomeration)
     #Evaluation
     y_pred = model.predict(X_test)
     acc = accuracy_score(y_test, y_pred)
     print(f"Test Accuracy: {acc:.3f}")
-    f1macro = f1_score(y_test, y_pred, average='macro',zero_division=0)
-    print(f"Test F1 (macro): {f1macro:.3f}")
-    f1micro = f1_score(y_test, y_pred, average='micro',zero_division=0)
-    print(f"Test F1 (micro): {f1micro:.3f}")
-    precmacro = precision_score(y_test, y_pred, average='macro',zero_division=0)
-    print(f"Test Precision (macro): {precmacro:.3f}")
-    recmacro = recall_score(y_test, y_pred, average='macro',zero_division=0)
-    print(f"Test Recall (macro): {recmacro:.3f}")
-    precmicro = precision_score(y_test, y_pred, average='micro',zero_division=0)
-    print(f"Test Precision (micro): {precmicro:.3f}")
-    recmicro = recall_score(y_test, y_pred, average='micro',zero_division=0)
-    print(f"Test Recall (micro): {recmicro:.3f}")
+    f1_macro = f1_score(y_test, y_pred, average='macro',zero_division=0)
+    print(f"Test F1 (macro): {f1_macro:.3f}")
+    f1_micro = f1_score(y_test, y_pred, average='micro',zero_division=0)
+    print(f"Test F1 (micro): {f1_micro:.3f}")
+    prec_macro = precision_score(y_test, y_pred, average='macro',zero_division=0)
+    print(f"Test Precision (macro): {prec_macro:.3f}")
+    rec_macro = recall_score(y_test, y_pred, average='macro',zero_division=0)
+    print(f"Test Recall (macro): {rec_macro:.3f}")
+    prec_micro = precision_score(y_test, y_pred, average='micro',zero_division=0)
+    print(f"Test Precision (micro): {prec_micro:.3f}")
+    rec_micro = recall_score(y_test, y_pred, average='micro',zero_division=0)
+    print(f"Test Recall (micro): {rec_micro:.3f}")
 
 
 
@@ -318,25 +310,25 @@ def test_model(model, X_test, y_test, scaler=None, agglomeration=None):
 #Initialise variables
 subjects = [f"sub-{i:02d}" for i in range(1, 11)]
 TEST_INDEX = 0 #0-9 - which subject to use as test
-NUM_CLASSES = 100 #number up to 1654
+NUM_CLASSES = 1654 #number up to 1654
 NUM_TRAIN_SUBJECTS = 9 #there is no reason to change this, ever
-COEFFICIENT_OF_AGGLOMERATION=565 
-
+COEFFICIENT_OF_AGGLOMERATION=565  #hyperparameter F for FeatureAgglomeration
+ALPHA=1.0  #hyperparameter alpha for CWVC
 test_subj = subjects[TEST_INDEX]
 non_test_subjects = subjects[0:TEST_INDEX] + subjects[TEST_INDEX+1:]
 
 
 #Load data
 train_features, train_labels, fine_tune_features, fine_tune_labels, test_features, test_labels = load_data(nc=NUM_CLASSES)
-X_test = test_features[TEST_INDEX]
-y_test = test_labels[TEST_INDEX]
-
 
 #Organise data
 X_train_arr = [(train_features[j]) for j in range(10) if j != TEST_INDEX]
 y_train_arr = [(train_labels[j]) for j in range(10) if j != TEST_INDEX]
 X_ft = fine_tune_features[TEST_INDEX]
 y_ft = fine_tune_labels[TEST_INDEX]
+X_test = test_features[TEST_INDEX]
+y_test = test_labels[TEST_INDEX]
+
 #Fit preprocessors for future use
 scaler, agglomeration = fit_preprocessors(X_train_arr, f=COEFFICIENT_OF_AGGLOMERATION)
 
@@ -344,38 +336,13 @@ scaler, agglomeration = fit_preprocessors(X_train_arr, f=COEFFICIENT_OF_AGGLOMER
 modelsList = train_model(X_train_arr, y_train_arr, num_subjects=NUM_TRAIN_SUBJECTS, scaler=scaler, agglomeration=agglomeration)
     
 #Fine tuning
-model = finetune_model(modelsList, X_ft, y_ft, scaler=scaler, agglomeration=agglomeration)
+model = finetune_model(modelsList, X_ft, y_ft, scaler=scaler, agglomeration=agglomeration, alpha=ALPHA)
+
 #Testing
 test_model(model, X_test, y_test, scaler=scaler, agglomeration=agglomeration)
+
 #Visualisations
-visualise_shit("visualisations_improved", X_test, y_test, model, scaler=scaler, agglomeration=agglomeration)
+visualisations("visualisations_improved", X_test, y_test, model, scaler=scaler, agglomeration=agglomeration)
 
 print(f"\nTest Subject: {test_subj}")
 
-accs =[]; aps = []; aps2=[]; precs = []; precs2=[]; recs = []; recs2=[]; f1s = []; f1s2 = []
-X_test = preprocess_data(X_test, scaler=scaler, agglomeration=agglomeration)
-classes = np.arange(1, NUM_CLASSES + 1)
-y_test_bin = label_binarize(y_test, classes=classes) 
-clfs = modelsList
-for clf in clfs:
-    y_pred = clf.predict(X_test)
-    y_score = clf.predict_proba(X_test)
-    accs.append(accuracy_score(y_test, y_pred))
-    aps.append(average_precision_score(y_test_bin, y_score, average='macro'))
-    aps2.append(average_precision_score(y_test_bin, y_score, average='micro'))
-    precs.append(precision_score(y_test, y_pred, average='macro', zero_division=0))
-    recs.append(recall_score(y_test, y_pred, average='macro',zero_division=0))
-    precs2.append(precision_score(y_test, y_pred, average='micro',zero_division=0))
-    recs2.append(recall_score(y_test, y_pred, average='micro',zero_division=0))
-    f1s.append(f1_score(y_test, y_pred, average='macro',zero_division=0))
-    f1s2.append(f1_score(y_test, y_pred, average='micro',zero_division=0))
-print("averages across sub-models M_i")
-print("Average accuracy:", np.mean(np.array(accs)))
-print("Average precision (macro):", np.mean(np.array(aps)))
-print("Average precision (micro):", np.mean(np.array(aps2)))
-print("Average precision (macro):", np.mean(np.array(precs)))
-print("Average recall (macro):", np.mean(np.array(recs)))
-print("Average precision (micro):", np.mean(np.array(precs2)))
-print("Average recall (micro):", np.mean(np.array(recs2)))
-print("Average F1 (macro):", np.mean(np.array(f1s)))
-print("Average F1 (micro):", np.mean(np.array(f1s2)))

@@ -211,3 +211,5 @@ data
 .archive
 ~$*
 *.xlsx
+*.zip
+*.pdf

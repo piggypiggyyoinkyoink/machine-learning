@@ -37,8 +37,7 @@ fine_tune_brain, fine_tune_image, fine_tune_text, fine_tune_label = [[] for i in
 test_brain, test_image, test_text, test_label = [[] for i in range(10)], [[] for i in range(10)], [[] for i in range(10)], [[] for i in range(10)]
 NUM_CLASSES = 120
 SAMPLES_PER_CLASS = 10
-TRAIN_PER_CLASS = 1
-FINE_TUNE_PER_CLASS = 2
+VIS_PER_CLASS = 1
 
 num = 0 #Funky counter thingy for the for loop
 for sbj in subjects:
@@ -65,7 +64,7 @@ for sbj in subjects:
     for i in range(NUM_CLASSES):
         start = i * SAMPLES_PER_CLASS
         end = start + SAMPLES_PER_CLASS
-        train_brain[num].append(brain[start:start+TRAIN_PER_CLASS])
+        train_brain[num].append(brain[start:start+VIS_PER_CLASS])
     num+=1 #important
 
 
@@ -74,26 +73,12 @@ for i in range(10):
     train_brain[i] = np.vstack(train_brain[i])
     print(np.array(train_brain[i]).shape)
 print(np.array(train_brain).shape)
-#X_all = np.vstack([train_brain[s] for s in range(9)])#only visualise train subjects
 X_all = np.array([train_brain[s] for s in range(10)])
-# print(np.array(X_all).shape)
-# y_subject = [s for s in subjects if s != subjects[9]]
-# scaler = StandardScaler().fit(X_all)
-# X_scaled = scaler.transform(X_all)
 
-# pca = PCA(n_components=50, random_state=42).fit(X_scaled)
-# X_pca = pca.transform(X_scaled)
-# X_tsne = TSNE(
-#     n_components=2,
-#     perplexity=30,
-#     learning_rate='auto',
-#     init='pca',
-#     random_state=42
-# ).fit_transform(X_pca)
 X_flat = X_all.reshape(-1, X_all.shape[-1])
 subjects = np.repeat(np.arange(X_all.shape[0]), X_all.shape[1])
 
-# Scale (fit once)
+# Scale 
 scaler = StandardScaler().fit(X_flat)
 X_scaled = scaler.transform(X_flat)
 
@@ -108,9 +93,6 @@ X_tsne = TSNE(
     random_state=42
 ).fit_transform(X_pca)
 
-
-import numpy as np
-import matplotlib.pyplot as plt
 
 plt.figure(figsize=(7, 6))
 

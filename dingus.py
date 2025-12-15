@@ -6,8 +6,8 @@ outgoing_errors = defaultdict(int)  # A -> *
 incoming_errors = defaultdict(int)  # * -> B
 c = defaultdict(int)
 
-#with open("./visualisations_baseline/top_confused_pairs.txt") as f:
-with open("./visualisations_improved/top_confused_pairs.txt") as f:
+#with open("./visualisations_baseline/confused_pairs.txt") as f:
+with open("./visualisations_improved/confused_pairs.txt") as f:
     for line in f:
         left, count = line.split(":")
         count = int(count.strip())

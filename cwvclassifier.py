@@ -20,7 +20,6 @@ class ClassWeightedVotingClassifier(BaseEstimator, ClassifierMixin):
 
     
 
-
     def fit(self, X, y):
         # Check that X and y have correct shape, set n_features_in_, etc.
         X, y = validate_data(self, X, y)
@@ -36,8 +35,8 @@ class ClassWeightedVotingClassifier(BaseEstimator, ClassifierMixin):
         if self.weighted:
             accs = np.zeros(num_estimators, dtype=float)
 
-            for j in range(len(self.estimators)):
-                est = self.estimators[j][1]
+            for i in range(len(self.estimators)):
+                est = self.estimators[i][1]
                 try:
                     probability_matrix = est.predict_proba(X)  #shape: (num_samples, num_classes)
                 except:
@@ -50,13 +49,13 @@ class ClassWeightedVotingClassifier(BaseEstimator, ClassifierMixin):
                 y_pred = self.classes[np.argmax(probability_matrix, axis=1)]
 
                 #use f1 score for each class to compute weight for that class for this estimator.
-                for i in range(len(self.classes)):
-                    f1 = f1_score(y == self.classes[i], y_pred == self.classes[i])
+                for j in range(len(self.classes)):
+                    f1 = f1_score(y == self.classes[j], y_pred == self.classes[j])
                     smoothed = (f1 + self.alpha) / (1.0 + self.alpha)
-                    weights[j, i] = smoothed
+                    weights[i, j] = smoothed
 
                 #get overall accuracy score for each estimator against X and y
-                accs[j] = accuracy_score(y, y_pred)
+                accs[i] = accuracy_score(y, y_pred)
 
             #normalise accuracy scores to [0,1]
             accs = (accs - accs.min()) / (accs.max() - accs.min() + 1e-12) #add small number so weights never zero
@@ -73,7 +72,6 @@ class ClassWeightedVotingClassifier(BaseEstimator, ClassifierMixin):
 
 
 
-
     #predict_proba method needed so i can use a CWVClassifier as an estimator for another CWVClassifier
     def predict_proba(self, X):
         if self.weights is None:
@@ -83,8 +81,8 @@ class ClassWeightedVotingClassifier(BaseEstimator, ClassifierMixin):
         #initialise probability sum array
         prob_sum = np.zeros((X.shape[0], len(self.classes)), dtype=float)
 
-        for j in range(len(self.estimators)):
-            est = self.estimators[j][1]
+        for i in range(len(self.estimators)):
+            est = self.estimators[i][1]
             try:
                 #get probability matrix for estimator
                 probability_matrix = est.predict_proba(X)
@@ -92,7 +90,7 @@ class ClassWeightedVotingClassifier(BaseEstimator, ClassifierMixin):
                 #no predict_proba method
                 raise Exception("Estimator does not have predict_proba method")
             #multiply by weight then add to the sum
-            prob_sum += probability_matrix * self.weights[j][None, :]
+            prob_sum += probability_matrix * self.weights[i][None, :]
 
         #normalise rows to be probabilities
         prob_sum = prob_sum / (prob_sum.sum(axis=1, keepdims=True) + 1e-12)
