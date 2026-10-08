@@ -1,22 +1,10 @@
-from sklearn.calibration import label_binarize
 from sklearn.linear_model import LogisticRegression
 from sklearn.preprocessing import StandardScaler
-import torch
 import os
 import scipy.io as sio
-from sklearn.model_selection import train_test_split
 import numpy as np
-from sklearn import preprocessing, svm, cluster
-from sklearn.preprocessing import PolynomialFeatures
-from sklearn import svm
-from sklearn.neighbors import KNeighborsClassifier
-from sklearn.ensemble import HistGradientBoostingClassifier, StackingClassifier, RandomForestClassifier, VotingClassifier
-from sklearn.decomposition import PCA
-from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
-from sklearn.metrics import accuracy_score, average_precision_score, classification_report, precision_recall_curve
-from sklearn.pipeline import Pipeline
-from sklearn.compose import ColumnTransformer
-from sklearn.linear_model import RidgeClassifier
+from sklearn import cluster
+from sklearn.metrics import accuracy_score
 from cwvclassifier import ClassWeightedVotingClassifier
 
 def load_data(nc=100):

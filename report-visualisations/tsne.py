@@ -1,26 +1,9 @@
-from sklearn.calibration import label_binarize
-from sklearn.linear_model import LogisticRegression
 from sklearn.preprocessing import StandardScaler
-import torch
 import os
 import scipy.io as sio
-from sklearn.model_selection import train_test_split
 import numpy as np
-from sklearn import preprocessing, svm, cluster
-from sklearn.preprocessing import PolynomialFeatures
-from sklearn import svm
-from sklearn.neighbors import KNeighborsClassifier
-from sklearn.ensemble import HistGradientBoostingClassifier, StackingClassifier, RandomForestClassifier, VotingClassifier
 from sklearn.decomposition import PCA
-from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
-from sklearn.metrics import accuracy_score, precision_recall_curve, average_precision_score, precision_recall_fscore_support, confusion_matrix, classification_report, f1_score, precision_score, recall_score
-from sklearn.pipeline import Pipeline
-from sklearn.compose import ColumnTransformer
-from sklearn.linear_model import RidgeClassifier
-import mmbra
 import matplotlib.pyplot as plt
-from sklearn.preprocessing import label_binarize
-from cwvclassifier import ClassWeightedVotingClassifier 
 from sklearn.manifold import TSNE
 
 
@@ -111,29 +94,7 @@ plt.ylabel("Component 2")
 plt.title("T-SNE showing EEG feature space per Subject (120 samples)")
 plt.legend(markerscale=2, fontsize=8, ncol=2, title="Subject")
 plt.tight_layout()
-plt.show()
-
-
-
-# import matplotlib.pyplot as plt
-# print(X_tsne.shape)
-# subjects = [f"sub-{i:02d}" for i in range(1, 10)]
-# indexes = list(range(9))
-# plt.figure(figsize=(7, 6))
-# for i in indexes:
-#     idx = subjects == i
-#     print(X_tsne[i, 0], X_tsne[i, 1])
-#     plt.scatter(
-#         X_tsne[idx, 0],
-#         X_tsne[idx, 1],
-#         s=8,
-#         alpha=0.6,
-#         label=f'{subjects[i]}'
-#     )
-
-# plt.legend(markerscale=2, fontsize=8)
-# plt.title("t-SNE of Feature Space Coloured by Subject")
-# plt.xlabel("t-SNE Dimension 1")
-# plt.ylabel("t-SNE Dimension 2")
-# plt.tight_layout()
+plt.savefig("tsne_subjects.png", dpi=300)
 # plt.show()
+
+
